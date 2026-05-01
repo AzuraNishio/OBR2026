@@ -2,7 +2,7 @@
     "python-envs.defaultEnvManager": "ms-python.python:conda",
     "python-envs.defaultPackageManager": "ms-python.python:conda",
     "pybricks.hubName": "Ovo cozido",
-    "pybricks.mainProgram": "",
+    "pybricks.mainProgram": "/home/azura/Tera2/BigHome/Coisas/github/Azurinhaa/OBR2026/main.py",
     "pybricks.autoConnect": true,
     "pybricks.connectionTimeout": 10000,
     "pybricks.showOutputChannel": true,

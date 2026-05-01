@@ -15,12 +15,18 @@ class Context:
         self.display = self.hub.display
         self.buttons = self.hub.buttons
         self.battery = self.hub.battery
+        self.cron = StopWatch()
         self.display.off()
         print("\033[2J\033[H", end="")
+        print("\n")
         self.setup_ports()
         self.hub_info_dump()
     
-
+    def time(self):
+        return self.cron.time() * 0.001
+    
+    def time_ms(self):
+        return self.cron.time()
 
     def setup_one_port(self, port: Port):
         pp = connect_port_device(port)
@@ -37,7 +43,8 @@ class Context:
         self.pE = self.setup_one_port(Port.E)
         self.pF = self.setup_one_port(Port.F)
 
-
+    def get_port(self, port:str):
+        return self.ports[f"Port.{port}"][1]
     
     def battery_percent_approximation(self):
         v = self.battery.voltage() / 1000
@@ -66,6 +73,8 @@ class Context:
         state_log += f"\nC: {self.ports["Port.C"][0]:<20}" + f"D: {self.ports["Port.D"][0]:<20}"
         state_log += f"\nE: {self.ports["Port.E"][0]:<20}" + f"F: {self.ports["Port.F"][0]:<20}"
 
+        state_log += "\n" + "-" * 100
+        state_log += f"\nIs charging: {self.hub.charger.connected() == 2}"
         state_log += "\n" + "-" * 100
 
         print(state_log)
