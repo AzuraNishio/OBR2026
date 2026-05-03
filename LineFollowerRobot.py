@@ -10,7 +10,7 @@ from Scaffolding import *
 
 
 class LineFollowerRobot:
-    def __init__(self, ctx, L_sensor_port, R_sensor_port, L_motor_port, R_motor_port, wheel_diameter, wheel_distance, R_motor_forward_direction = Direction.CLOCKWISE, L_motor_forward_direction = Direction.CLOCKWISE):
+    def __init__(self, ctx, L_sensor_port, R_sensor_port, L_motor_port, R_motor_port, wheel_diameter, wheel_distance, X_distance_CoR_sensor, Y_distance_CoR_sensor, R_motor_forward_direction = Direction.CLOCKWISE, L_motor_forward_direction = Direction.CLOCKWISE):
 
         self.R_motor:Motor = ctx.get_port(R_motor_port)
         self.L_motor:Motor = ctx.get_port(L_motor_port)
@@ -27,5 +27,20 @@ class LineFollowerRobot:
         self.drive_base = DriveBase(self.L_motor, self.R_motor, wheel_diameter, wheel_distance)
         self.wheel_diameter = wheel_diameter
         self.wheel_distance = wheel_distance
+        self.X_distance_CoR_sensor = X_distance_CoR_sensor
+        self.Y_distance_CoR_sensor = Y_distance_CoR_sensor
+
+        self.drive_base.reset(0, 0)
+    
+        self.drive_base.distance_control.limits(acceleration= (1000, 3000))
+        self.drive_base.heading_control.limits(acceleration=1000)
+
+        linear_limits = self.drive_base.distance_control.limits()
+        heading_limits = self.drive_base.heading_control.limits()
+
+        print("Linear limits")
+        print(f"Maximum speed: {linear_limits[0]} mm/s, maximum acceleration: {linear_limits[1]} mm/s², maximum torque: {linear_limits[2]} N*mm")
+        print("Turning limits")
+        print(f"Maximum speed: {heading_limits[0]} degrees/s, maximum acceleration: {heading_limits[1]} degrees/s², maximum torque: {heading_limits[2]} N*mm")
 
 

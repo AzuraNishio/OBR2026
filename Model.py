@@ -18,10 +18,15 @@ class TreadmilDifferentialDriveRobotModel:
         self.robot = robot
         self.position = vector(0, 0, 0)
         self.last_time = ctx.time()
-        self.gravity_vector_world_space = vector(0, 0, 9810) #gravity in mm/s²
         self.last_R_wheel_theta = robot.R_motor.angle()
         self.last_L_wheel_theta = robot.L_motor.angle()
-        self.degree_to_wheel_linear_constant = robot.wheel_diameter * pi / 360
+
+        # Constants
+        self.gravity_vector_world_space = vector(0, 0, 9810) #gravity in mm/s²
+        self.degree_to_radian = pi / 180
+        self.degree_to_wheel_linear_constant = robot.wheel_diameter * self.degree_to_radian * 0.5
+        self.sensor_CoR_distance = length(vector(robot.X_distance_CoR_sensor, robot.Y_distance_CoR_sensor))
+        self.sensor_turn_rate_to_linear = self.sensor_CoR_distance * self.degree_to_radian
 
 
     def acceleration_gravity_corrected_world_frame(self):
@@ -36,7 +41,7 @@ class TreadmilDifferentialDriveRobotModel:
         while True:
             try:
                 self.tick()
-                await wait(1)
+                await wait(10)
             except Exception as e:
                 print(e)
     
@@ -49,6 +54,11 @@ class TreadmilDifferentialDriveRobotModel:
         v = vector(v[0], v[1])
         v /= length(v)
         return v
+    
+    def sensor_linear_speed(self, linear_rate, turn_rate):
+        rotation_wise_linear = self.sensor_turn_rate_to_linear * (turn_rate)
+        return abs(rotation_wise_linear) + abs(linear_rate)
+
 
     def tick(self):
         ctx:Context = self.ctx
@@ -72,7 +82,7 @@ class TreadmilDifferentialDriveRobotModel:
         self.position += self.ctx.imu.orientation() * vector((self.L_wheel_linear_speed + self.R_wheel_linear_speed ) * 0.5 * dt, 0, 0)
 
 
-        print(pretty_vec_mm_to_cm_pos(self.position))
+        #print(pretty_vec_mm_to_cm_pos(self.position))
 
 
 

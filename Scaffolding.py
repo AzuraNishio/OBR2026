@@ -74,7 +74,7 @@ class Context:
         state_log += f"\nE: {self.ports["Port.E"][0]:<20}" + f"F: {self.ports["Port.F"][0]:<20}"
 
         state_log += "\n" + "-" * 100
-        state_log += f"\nIs charging: {self.hub.charger.connected() == 2}"
+        state_log += f"\nCharger current: {self.hub.charger.current()} mA"
         state_log += "\n" + "-" * 100
 
         print(state_log)

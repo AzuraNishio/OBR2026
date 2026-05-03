@@ -90,3 +90,6 @@ def sign(v):
         return 1
     else:
         return -1
+
+def clamp(top, down, value):
+    return max(down, min(top, value))
