@@ -15,8 +15,20 @@ from TestSuite import *
 
 
 def test_suite(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):
+    
     print("Meoww! Testing time!")
-    reaction_testing(ctx, robot, model)
+  #  reaction_testing(ctx, robot, model)
+    ctx.speaker.beep()
+    # robot.R_motor.run_time(20, 10000)
+    
+    while True:
+        print(f"Direita: {robot.R_motor.angle()}, esquerda: {robot.L_motor.angle()}")
+        robot.drive_base.drive(2000, 0)
+    
+    #robot.drive_base.straight(100)
+    ctx.speaker.beep()
+    
+
 
 
 def reaction_testing(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):

@@ -15,12 +15,21 @@ class LineFollowerRobot:
         self.R_motor:Motor = ctx.get_port(R_motor_port)
         self.L_motor:Motor = ctx.get_port(L_motor_port)
 
-        self.R_motor.close()
-        self.R_motor = Motor(get_port(R_motor_port), R_motor_forward_direction)
+        try:
+            self.R_motor.close()
+            self.R_motor = Motor(get_port(R_motor_port), R_motor_forward_direction)
+        except Exception as e:
+            raise PortError(R_motor_port, e)
 
-        self.L_motor.close()
-        self.L_motor = Motor(get_port(L_motor_port), L_motor_forward_direction)
+        
+        try:
+            self.L_motor.close()
+            self.L_motor = Motor(get_port(L_motor_port), L_motor_forward_direction)
+        except Exception as e:
+            raise PortError(L_motor_port, e)
 
+            
+        
         self.R_sensor:ColorSensor = ctx.get_port(R_sensor_port)
         self.L_sensor:ColorSensor = ctx.get_port(L_sensor_port)
 

@@ -103,10 +103,10 @@ class FollowerAlgorithm:
             #    else:
             #        self.gap_timer = ctx.time()
             #        self.gap_mode = False
-#
+
 
             # Check for black
-            if darkest < 8:
+            if darkest < 9:
                 self.freeze_tps()
                 await self.center_aligned_manuever(sign((L_reflection) - (R_reflection)))
                 self.unfreeze_tps()
@@ -116,9 +116,9 @@ class FollowerAlgorithm:
 
             # Calculate turning rate from error
             error = L_reflection - R_reflection
-            turn_rate = error * 13
+            turn_rate = error * 6
 
-            if abs(turn_rate) < 20:
+            if abs(turn_rate) < 10:
                 turn_rate = 0
 
             max_sensor_linear_speed = 200
@@ -136,7 +136,6 @@ class FollowerAlgorithm:
 
             
             # Afterwards calculate linear speed accordingly to sideways planned and real sensor speed to keep sensor under speed limit
-
             linear = max_sensor_linear_speed - max(abs(sideways_sensor_speed), abs(planed_sideways_sensor_speed))
             
 
@@ -177,19 +176,9 @@ class FollowerAlgorithm:
             pro_line_sensor = robot.R_sensor
             ret_line_sensor = robot.L_sensor
 
-        # First check if it is easy to get back to line
-        start_dist = robot.drive_base.distance()
-        while True:
-            robot.drive_base.drive(10, dir * 60)
-            if robot.drive_base.distance() - start_dist > 5:
-                break # After 5 mm stop
-            
-            if await pro_line_sensor.reflection() > 8:
-                # If scaped cancel manuever
-                return
 
         #Step to align CoR
-        robot.drive_base.curve(140, -23 * dir, wait=False)
+        robot.drive_base.curve(110, -25 * dir, wait=False)
 
         last_dist = robot.drive_base.distance()
 
@@ -222,13 +211,21 @@ class FollowerAlgorithm:
 
         print(f"Pro line: {pro_line_width}mm, ret line: {ret_line_width}mm")
 
+        init_angle = robot.drive_base.angle()
         while True and not skip:
-            robot.drive_base.drive(0, dir * 140)
+            while True and not skip:
+                robot.drive_base.drive(0, dir * 140)
+                if abs(robot.drive_base.angle() - init_angle) > 160:
+                    dir *= -1
+                    while abs(robot.drive_base.angle() - init_angle) > 160:
+                        robot.drive_base.drive(0, dir * 140)
+                    break
 
-            if await pro_line_sensor.reflection() < 21:
-                while True:
-                    robot.drive_base.drive(0, dir * 70)
+                if await pro_line_sensor.reflection() < 21:
+                    while True:
+                        robot.drive_base.drive(0, dir * 70)
 
-                    if await pro_line_sensor.reflection() > 21:
-                        break
-                break
+                        if await pro_line_sensor.reflection() > 21:
+                            skip = True
+                            break
+                    break
