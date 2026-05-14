@@ -14,9 +14,11 @@ from FollowerAlgorithm import *
 from TestSuite import *
 
 ctx: Context
+ctx:Context = Context()
+
+
 def main():
     global ctx
-    ctx = Context()
 
     robot = LineFollowerRobot( ctx,
         L_sensor_port=  "C",
@@ -49,7 +51,20 @@ def main():
 
     async def main_task():
         await multitask(follower_routine(), model.routine())
-
+    
     run_task(main_task())
 
-main()
+try:
+    main()
+except Exception as e:
+    ctx.hub_info_dump()
+
+    if isinstance(e, PortError):
+        ctx.display.char(e.port)
+        print(f"Port error in {e.port}! {e}")
+
+    else:
+        print(e)
+
+    ctx.speaker.beep(100, 1500)
+    raise e

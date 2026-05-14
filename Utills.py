@@ -93,3 +93,9 @@ def sign(v):
 
 def clamp(top, down, value):
     return max(down, min(top, value))
+
+class PortError(RuntimeError):
+    def __init__(self, port:str, *args):
+        super().__init__(*args)
+        self.port = port
+    

@@ -12,5 +12,6 @@
     "pybricks.soundOnDownload": "",
     "pybricks.soundOnStart": "",
     "pybricks.soundOnFinishSuccess": "",
-    "pybricks.soundOnFinishError": ""
+    "pybricks.soundOnFinishError": "",
+    "files.autoSave": "afterDelay"
 }
