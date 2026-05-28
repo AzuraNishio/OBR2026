@@ -7,6 +7,8 @@ from pybricks.hubs import *
 from pybricks.parameters import *
 from Utills import *
 from Scaffolding import *
+from AzSensors import *
+
 
 
 class LineFollowerRobot:
@@ -30,8 +32,9 @@ class LineFollowerRobot:
 
             
         
-        self.R_sensor:ColorSensor = ctx.get_port(R_sensor_port)
-        self.L_sensor:ColorSensor = ctx.get_port(L_sensor_port)
+        self.R_sensor:AzColorSensor = ctx.get_port(R_sensor_port)
+        self.L_sensor:AzColorSensor = ctx.get_port(L_sensor_port)
+        self.D_sensor:AzDualColorSensor = AzDualColorSensor(self.L_sensor, self.R_sensor, 15)
 
         self.drive_base = DriveBase(self.L_motor, self.R_motor, wheel_diameter, wheel_distance)
         self.wheel_diameter = wheel_diameter

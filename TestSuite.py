@@ -12,24 +12,24 @@ from Model import *
 from umath import *
 from FollowerAlgorithm import *
 from TestSuite import *
+from AzSensors import *
 
+TestSuite_test = False
+TestSuite_test_async = False
 
 def test_suite(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):
     
     print("Meoww! Testing time!")
-  #  reaction_testing(ctx, robot, model)
-    ctx.speaker.beep()
-    # robot.R_motor.run_time(20, 10000)
-    
+
+
+async def test_suite_async(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):
+    print("Meoww! Testing time!")
+
     while True:
-        print(f"Direita: {robot.R_motor.angle()}, esquerda: {robot.L_motor.angle()}")
-        robot.drive_base.drive(2000, 0)
-    
-    #robot.drive_base.straight(100)
-    ctx.speaker.beep()
-    
+        reflection1, reflection2 = await robot.D_sensor.reflection()
+        line1, line2 = await robot.D_sensor.line()
 
-
+        print(f"r: {reflection1:<6}, {reflection2:<6}, line: {line1:<6}, {line2:<6}")
 
 def reaction_testing(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):
     while True:

@@ -10,6 +10,7 @@ from Scaffolding import *
 from LineFollowerRobot import *
 from Model import *
 from umath import *
+from pybricks.pupdevices import *
 
 
 class FollowerAlgorithm:
@@ -60,24 +61,24 @@ class FollowerAlgorithm:
 
         await wait(1)
         
-        R_reflection = await robot.R_sensor.reflection()
-        L_reflection = await robot.L_sensor.reflection()
+        await robot.D_sensor.snap()
+        L_line, R_line = robot.D_sensor.line_snap()
+        line_DIF = robot.D_sensor.line_snap_difference()
 
-        darkest = min(R_reflection, L_reflection)
-        sum = R_reflection + L_reflection
+        sum = R_line + L_line
+        darkest = min(R_line, L_line)
 
-        R_green = await robot.R_sensor.color() == Color.GREEN
-        L_green = await robot.L_sensor.color() == Color.GREEN
+        L_green, R_green = await robot.D_sensor.isColor(Color.GREEN)
 
         self.R_green_counter = 6 if R_green else max(0, self.R_green_counter - 1)
         self.L_green_counter = 6 if L_green else max(0, self.L_green_counter - 1)
         
         if self.gap_mode:
             # Cruise gap mode (Fast, ready to position in new line beggining)
-            if darkest < 20:
+            if robot.D_sensor.minimum_line_snap() < 20:
                 robot.drive_base.brake()
 
-                dir = sign((L_reflection) - (R_reflection))
+                dir = robot.D_sensor.line_difference_sign()
                 await self.gap_returnal_manuever(dir)
 
                 self.gap_timer = ctx.time()
@@ -86,10 +87,8 @@ class FollowerAlgorithm:
                 await ctx.speaker.beep(500, 20)
 
             else:
-                robot.drive_base.drive(200, 0)
-            
+                robot.drive_base.drive(200, 0)  
         else:
-            
             # Line mode (predictive PD follower with sensor speed control) 
 
             #TODO: Gap mode may work with closer sensors, change construction first
@@ -108,20 +107,20 @@ class FollowerAlgorithm:
             # Check for black
             if darkest < 9:
                 self.freeze_tps()
-                await self.center_aligned_manuever(sign((L_reflection) - (R_reflection)))
+                await self.center_aligned_manuever(robot.D_sensor.line_snap_difference_sign())
                 self.unfreeze_tps()
 
             # Robot turning speed
             turning_speed = ctx.imu.angular_velocity(vector(0,0,1))
 
             # Calculate turning rate from error
-            error = L_reflection - R_reflection
+            error = line_DIF
             turn_rate = error * 6
 
             if abs(turn_rate) < 10:
                 turn_rate = 0
 
-            max_sensor_linear_speed = 200
+            max_sensor_linear_speed = 150
 
             
             # Calculate maximum turn rate
@@ -212,20 +211,32 @@ class FollowerAlgorithm:
         print(f"Pro line: {pro_line_width}mm, ret line: {ret_line_width}mm")
 
         init_angle = robot.drive_base.angle()
+        swapped = 0
         while True and not skip:
             while True and not skip:
-                robot.drive_base.drive(0, dir * 140)
-                if abs(robot.drive_base.angle() - init_angle) > 160:
+                robot.drive_base.drive(0, dir * 120)
+                if abs(robot.drive_base.angle() - init_angle) > 160 or (swapped == 2 and abs(robot.drive_base.angle() - init_angle) < 1):
                     dir *= -1
+                    if swapped == 2:
+                        swapped = 0
+                        await robot.drive_base.straight(-60)
+
+                    
+                    swapped += 1
+                    
                     while abs(robot.drive_base.angle() - init_angle) > 160:
-                        robot.drive_base.drive(0, dir * 140)
+                        robot.drive_base.drive(0, dir * 120)
                     break
 
-                if await pro_line_sensor.reflection() < 21:
+                if await pro_line_sensor.line() < 21:
                     while True:
-                        robot.drive_base.drive(0, dir * 70)
+                        robot.drive_base.drive(0, dir * 60)
 
-                        if await pro_line_sensor.reflection() > 21:
+                        if await pro_line_sensor.line() > 21:
                             skip = True
+                            if abs(robot.drive_base.angle() - init_angle) > 60:
+                                await robot.drive_base.straight(-20)
+                            else:
+                                await robot.drive_base.straight(-5)
                             break
                     break

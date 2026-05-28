@@ -17,6 +17,7 @@ ctx: Context
 ctx:Context = Context()
 
 
+
 def main():
     global ctx
 
@@ -37,7 +38,9 @@ def main():
     follower = FollowerAlgorithm(ctx ,model, robot)
     
 
-    test_suite_mode = False
+    test_suite_mode = TestSuite_test
+    test_suite_mode_async = TestSuite_test_async
+
     if(test_suite_mode):
         test_suite(ctx, robot, model)
         wait(1000000)
@@ -50,7 +53,10 @@ def main():
        
 
     async def main_task():
-        await multitask(follower_routine(), model.routine())
+        if (test_suite_mode_async):
+            await test_suite_async(ctx , robot, model)
+        else:
+            await multitask(follower_routine(), model.routine())
     
     run_task(main_task())
 

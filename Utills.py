@@ -3,6 +3,9 @@ from pybricks.parameters import Port
 from pybricks.tools import *
 from umath import *
 
+from AzSensors import *
+from AzSensors import AzColorSensor
+
 tau = pi + pi
 
 def connect_port_device(port):
@@ -12,7 +15,7 @@ def connect_port_device(port):
         pass
 
     try:
-        return ("Color Sensor", ColorSensor(port))
+        return ("Color Sensor", AzColorSensor(port))
     except:
         pass
 
