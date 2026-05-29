@@ -69,8 +69,8 @@ class FollowerAlgorithm:
         R_green = await robot.R_sensor.color() == Color.GREEN
         L_green = await robot.L_sensor.color() == Color.GREEN
 
-        self.R_green_counter = 6 if R_green else max(0, self.R_green_counter - 1)
-        self.L_green_counter = 6 if L_green else max(0, self.L_green_counter - 1)
+        self.R_green_counter = 10 if R_green else max(0, self.R_green_counter - 1)
+        self.L_green_counter = 10 if L_green else max(0, self.L_green_counter - 1)
         
         if self.gap_mode:
             # Cruise gap mode (Fast, ready to position in new line beggining)
@@ -107,9 +107,38 @@ class FollowerAlgorithm:
 
             # Check for black
             if darkest < 9:
-                self.freeze_tps()
-                await self.center_aligned_manuever(sign((L_reflection) - (R_reflection)))
-                self.unfreeze_tps()
+                cancel = False
+                if max(self.L_green_counter, self.L_green_counter) > 0:
+                    print("Testando verde!")
+                    robot.drive_base.straight(20)
+                    doGreen = False
+                    T = True
+
+                    while not robot.drive_base.done():
+                        if (await robot.L_sensor.reflection() < 20 and await robot.R_sensor.reflection() < 20):
+                            T = False
+                        if (await robot.L_sensor.reflection() < 20 or await robot.R_sensor.reflection() < 20):
+                            doGreen = True
+                    if doGreen:
+                        print(f"Rodando verde! Left: {self.L_green_counter != 0}, Right: {self.L_green_counter != 0}")
+                        await ctx.speaker.beep(900, 30)
+                        if not T:
+                            await robot.drive_base.straight(-20)
+                            t0 = ctx.cron.time()
+                            while (ctx.cron.time() - t0) < 1000:
+                                L = await robot.L_sensor.reflection()
+                                R = await robot.R_sensor.reflection()
+
+                                robot.drive_base.drive(10 * ((L + R) - 20), (L - R) * 13.0)
+
+                        await self.green(self.L_green_counter != 0, self.L_green_counter != 0, T)
+                        cancel = True
+                    else:
+                        await robot.drive_base.straight(-20)
+                if not cancel:
+                    self.freeze_tps()
+                    await self.center_aligned_manuever(sign((L_reflection) - (R_reflection)))
+                    self.unfreeze_tps()
 
             # Robot turning speed
             turning_speed = ctx.imu.angular_velocity(vector(0,0,1))
@@ -118,7 +147,7 @@ class FollowerAlgorithm:
             error = L_reflection - R_reflection
             turn_rate = error * 6
 
-            if abs(turn_rate) < 10:
+            if abs(turn_rate) < 10 or (L_green or R_green):
                 turn_rate = 0
 
             max_sensor_linear_speed = 200
@@ -133,11 +162,9 @@ class FollowerAlgorithm:
             # Calculate sideways sensor speed and planned sideways sensor speed
             sideways_sensor_speed = model.sensor_turn_rate_to_linear * turning_speed
             planed_sideways_sensor_speed = model.sensor_turn_rate_to_linear * turn_rate
-
             
             # Afterwards calculate linear speed accordingly to sideways planned and real sensor speed to keep sensor under speed limit
             linear = max_sensor_linear_speed - max(abs(sideways_sensor_speed), abs(planed_sideways_sensor_speed))
-            
 
 
             robot.drive_base.drive(linear, turn_rate)
@@ -229,3 +256,35 @@ class FollowerAlgorithm:
                             skip = True
                             break
                     break
+    
+    async def green(self, left, right, T):
+        print("Center aligned manuever")
+        ctx = self.ctx
+        robot = self.robot
+        model = self.model
+
+        dir = (float(right) - float(left)) * 0.5
+
+        if (dir < 0):
+            pro_line_sensor = robot.L_sensor
+            ret_line_sensor = robot.R_sensor
+        else:
+            pro_line_sensor = robot.R_sensor
+            ret_line_sensor = robot.L_sensor
+        
+        robot.drive_base.use_gyro(True)
+
+        if (dir == 0):
+            await robot.drive_base.turn(180)
+            await robot.drive_base.straight(-2 * robot.X_distance_CoR_sensor + 30)
+        else:
+            await robot.drive_base.straight(robot.X_distance_CoR_sensor)
+            await robot.drive_base.curve(90 * dir)
+            await robot.drive_base.straight(-0.7 * robot.X_distance_CoR_sensor)
+        
+        robot.drive_base.use_gyro(False)
+
+            
+
+
+        
