@@ -5,7 +5,7 @@ from pybricks.iodevices import *
 from pybricks.robotics import *
 from pybricks.hubs import *
 from pybricks.parameters import *
-from Utills import *
+from libs.Utills import *
 from Scaffolding import *
 from LineFollowerRobot import *
 from Model import *
@@ -17,16 +17,16 @@ from TestSuite import *
 def test_suite(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):
     
     print("Meoww! Testing time!")
-  #  reaction_testing(ctx, robot, model)
-    ctx.speaker.beep()
-    # robot.R_motor.run_time(20, 10000)
-    
     while True:
-        print(f"Direita: {robot.R_motor.angle()}, esquerda: {robot.L_motor.angle()}")
-        robot.drive_base.drive(2000, 0)
-    
-    #robot.drive_base.straight(100)
-    ctx.speaker.beep()
+        ctx.show_string_encoded_img(
+                    """ .....
+                        ..9..
+                        .999.
+                        ..9..
+                        ....."""
+                )
+        wait(1000)
+ 
     
 
 

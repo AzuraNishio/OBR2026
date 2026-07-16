@@ -6,7 +6,12 @@
         {
             "label": "main",
             "type": "shell",
-            "command": "python -m pybricksdev run ble main.py"
+            "command": "python -m pybricksdev run ble code/main.py",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         }
     ]
 }
