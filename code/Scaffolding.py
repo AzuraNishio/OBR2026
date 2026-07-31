@@ -5,10 +5,15 @@ from pybricks.iodevices import *
 from pybricks.robotics import *
 from pybricks.hubs import *
 from pybricks.pupdevices import *
-from Utills import *
+from libs.Utills import *
+from libs.Exceptions import * 
+from FailHandler import *
 
 class Context:
-    def __init__(self):
+    def __init__(self, errorHandler: FailHandler):
+        self.state = "initializing context"
+
+        self.errorHandler = errorHandler
         self.hub = PrimeHub()
         self.speaker = self.hub.speaker
         self.imu = self.hub.imu
@@ -17,6 +22,7 @@ class Context:
         self.battery = self.hub.battery
         self.cron = StopWatch()
         self.display.off()
+        errorHandler.bindContext(self)
         print("\033[2J\033[H", end="")
         print("\n")
         self.setup_ports()
@@ -25,6 +31,11 @@ class Context:
     def time(self):
         return self.cron.time() * 0.001
     
+    def throw(self, e: Exception):
+        self.errorHandler.exception(e)
+
+    
+    
     def time_ms(self):
         return self.cron.time()
 
@@ -32,6 +43,16 @@ class Context:
         pp = connect_port_device(port)
         self.ports[str(port)] = pp
         return pp
+    
+    def reload_one_port(self, port: Port):
+        pp = connect_port_device(port)
+        if pp[1] != None:
+            self.ports[str(port)] = pp
+            return pp
+        else:
+            return self.ports[str(port)]
+        
+
         
     def setup_ports(self):
         self.ports = {}
@@ -42,8 +63,45 @@ class Context:
         self.pD = self.setup_one_port(Port.D)
         self.pE = self.setup_one_port(Port.E)
         self.pF = self.setup_one_port(Port.F)
+    
+    def reload_empty_ports(self):
+        self.pA = self.reload_one_port(Port.A)
+        self.pB = self.reload_one_port(Port.B)
+        self.pC = self.reload_one_port(Port.C)
+        self.pD = self.reload_one_port(Port.D)
+        self.pE = self.reload_one_port(Port.E)
+        self.pF = self.reload_one_port(Port.F)
+    
+    def indicate_port(self, p):
+        ind = "ABCDEF".find(p)
+        self.display.off()
+        self.display.pixel(int("002244"[ind]), int("040404"[ind]), 100)
+        self.display.pixel(int("002244"[ind]), int("131313"[ind]), 100)
+
+    def show_string_encoded_img(self, s):
+        i = 0
+        for c in s:
+            if c in "0123456789.":
+                if c != ".":
+                    self.display.pixel((i - (i % 5)) / 5, i % 5, int(c) * 10)
+                else:
+                    self.display.pixel((i - (i % 5)) / 5, i % 5, 0)
+                i += 1
+            
+
+    async def routine(self):
+        await wait(20)
+        self.errorHandler.refresh_display()
+
+
 
     def get_port(self, port:str):
+        return self.ports[f"Port.{port}"][1]
+    
+    def get_port_of_type(self, port:str, expected):
+        if not isinstance(self.ports[f"Port.{port}"][1], expected):
+            raise WrongPortError(port, str(expected)[8:len(str(expected))-2], self.ports[f"Port.{port}"][0])
+
         return self.ports[f"Port.{port}"][1]
     
     def battery_percent_approximation(self):
@@ -85,7 +143,7 @@ class Context:
     def low_batterie_warn(self):
         print(f"Low battery! {self.battery_percent_approximation()}%")
         self.sound_message(1)
-        self.display.char("B")
+        
 
 
 

@@ -8,7 +8,8 @@ from AzSensors import AzColorSensor
 
 tau = pi + pi
 
-def connect_port_device(port):
+def connect_port_device(port: Port):
+    
     try:
         return ("Motor", Motor(port))
     except:

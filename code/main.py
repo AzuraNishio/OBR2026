@@ -5,25 +5,26 @@ from pybricks.iodevices import *
 from pybricks.robotics import *
 from pybricks.hubs import *
 from pybricks.parameters import *
-from Utills import *
+from libs.Utills import *
 from Scaffolding import *
 from LineFollowerRobot import *
 from Model import *
 from umath import *
 from FollowerAlgorithm import *
 from TestSuite import *
+from FailHandler import *
 
 ctx: Context
-ctx:Context = Context()
-
+fail_handler:FailHandler = FailHandler()
+ctx:Context = Context(fail_handler)
 
 
 def main():
     global ctx
-
+    ctx.state = "Initializing robot"
     robot = LineFollowerRobot( ctx,
-        L_sensor_port=  "C",
-        R_sensor_port=  "D",
+        L_sensor_port=  "E",
+        R_sensor_port=  "F",
         L_motor_port=   "A",
         R_motor_port=   "B",
         wheel_diameter= 40,
@@ -34,43 +35,34 @@ def main():
         R_motor_forward_direction=Direction.COUNTERCLOCKWISE
     )
 
+    ctx.state = "Initializing model"
     model = TreadmilDifferentialDriveRobotModel(ctx, robot)
+
+    ctx.state = "Initializing follower algorithm"
     follower = FollowerAlgorithm(ctx ,model, robot)
     
 
-    test_suite_mode = TestSuite_test
-    test_suite_mode_async = TestSuite_test_async
-
+    test_suite_mode = False
     if(test_suite_mode):
+        ctx.state = "test suite"
         test_suite(ctx, robot, model)
         wait(1000000)
 
 
     async def follower_routine():
+        ctx.state = "stating follower"
         follower.setup()
         while True:
             await follower.tick()
        
 
     async def main_task():
-        if (test_suite_mode_async):
-            await test_suite_async(ctx , robot, model)
-        else:
-            await multitask(follower_routine(), model.routine())
+        await multitask(follower_routine(), ctx.routine())
     
     run_task(main_task())
 
 try:
     main()
 except Exception as e:
-    ctx.hub_info_dump()
-
-    if isinstance(e, PortError):
-        ctx.display.char(e.port)
-        print(f"Port error in {e.port}! {e}")
-
-    else:
-        print(e)
-
     ctx.speaker.beep(100, 1500)
-    raise e
+    ctx.throw(e)
