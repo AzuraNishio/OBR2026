@@ -23,10 +23,12 @@ def main():
     global ctx
     ctx.state = "Initializing robot"
     robot = LineFollowerRobot( ctx,
-        L_sensor_port=  "E",
-        R_sensor_port=  "F",
-        L_motor_port=   "A",
-        R_motor_port=   "B",
+        L_sensor_port=      "C",
+        R_sensor_port=      "D",
+        L_motor_port=       "A",
+        R_motor_port=       "B",
+        ultrasonic_sensor = "F",
+        garra_motor       = "E",
         wheel_diameter= 40,
         wheel_distance= 110,
         X_distance_CoR_sensor=60,

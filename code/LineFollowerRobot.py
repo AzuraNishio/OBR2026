@@ -11,7 +11,7 @@ from Scaffolding import *
 
 
 class LineFollowerRobot:
-    def __init__(self, ctx: Context, L_sensor_port, R_sensor_port, L_motor_port, R_motor_port, wheel_diameter, wheel_distance, X_distance_CoR_sensor, Y_distance_CoR_sensor, R_motor_forward_direction = Direction.CLOCKWISE, L_motor_forward_direction = Direction.CLOCKWISE):
+    def __init__(self, ctx: Context, L_sensor_port, R_sensor_port, L_motor_port, R_motor_port, wheel_diameter, wheel_distance, X_distance_CoR_sensor, Y_distance_CoR_sensor, R_motor_forward_direction = Direction.CLOCKWISE, L_motor_forward_direction = Direction.CLOCKWISE, ultrasonic_sensor = "E", garra_motor = "F"):
         
         # Keep trying to connect
         self.animTime = ctx.time()

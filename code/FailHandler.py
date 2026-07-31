@@ -8,13 +8,14 @@ from pybricks.pupdevices import *
 from libs.Utills import *
 from libs.Exceptions import * 
 from libs.AwareRobotics.AwDriveBase import *
+import Scaffolding
 
 class FailHandler:
     def __init__(self):
         self.ctx = None
         self.display_state = ""
 
-    def bindContext(self, ctx: Context):
+    def bindContext(self, ctx: Scaffolding.Context):
         self.ctx = ctx
     
     def exception(self, e: Exception):

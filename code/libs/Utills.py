@@ -3,8 +3,7 @@ from pybricks.parameters import Port
 from pybricks.tools import *
 from umath import *
 
-from AzSensors import *
-from AzSensors import AzColorSensor
+from libs.AzSensors import AzColorSensor
 
 tau = pi + pi
 

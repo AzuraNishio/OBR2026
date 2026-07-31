@@ -36,10 +36,11 @@ class FollowerAlgorithm:
         self.gap_timer = ctx.time()
         self.gap_mode = False
         self.max_sensor_linear_speed = 120
-        self.sensor_linear_speed = 20
-        self.sensor_linear_speed_ramp_duration = 2
+        self.sensor_linear_speed = 120
+        self.sensor_reduced_linear_speed = 80
+        self.sensor_linear_speed_ramp_duration = 0.5
         self.last_time = self.ctx.time()
-
+        self.bias = -4
         
 
         #robot.drive_base.use_gyro(True)
@@ -99,22 +100,69 @@ class FollowerAlgorithm:
             
         else:
             # Check for black
-            if darkest < 9:
+            if darkest < 11:
                 self.freeze_tps() # Freeze tick per second counter
                 if self.L_green_counter < 0.1 or self.R_green_counter < 0.1: # If either sensor has seen green less than 0.1 seconds ago, them do crossing
+
                     # Check side; 1 if right, 0 if 180, -1 if left
                     side = (1 if self.R_green_counter < 0.1 else 0) - (1 if self.L_green_counter < 0.1 else 0)
+                    if side > 0:
+                        pro_line_sensor   = robot.R_sensor
+                        retro_line_sensor = robot.L_sensor
+                    else:
+                        pro_line_sensor   = robot.L_sensor
+                        retro_line_sensor = robot.R_sensor
+
+
+
+                    print(f"green! {side}")
+
 
                     # First of all brake
                     robot.drive_base.brake()
 
-                    # After braking, move forward 50 mm
-                    robot.drive_base.straight(50)
+                    robot.drive_base.use_gyro(True)
+                    # After braking, move forward 70 mm
+                    await robot.drive_base.straight(70)
 
                     if side == 0: # If 180 them turn 170
                         await robot.drive_base.curve(0, 170)
+
+                        
                     else:         # Else turn 80 in the direction
-                        await robot.drive_base.curve(0, 80 * side)
+                        await robot.drive_base.curve(0, 60 * side)
+
+                        skip = False
+
+                        while True and not skip: # Loop until skip
+                            robot.drive_base.drive(0, side * 140) # Just turn in the direction of the line
+                            if await pro_line_sensor.reflection() < 21:
+                                while True:
+                                    robot.drive_base.drive(0, side * 40)
+
+                                    if await pro_line_sensor.reflection() > 21:
+                                        if await retro_line_sensor.reflection() > 21:
+                                            skip = True
+                                            break
+                                        else:
+                                            robot.drive_base.curve(0, side * -4)
+                            elif await retro_line_sensor.reflection() < 21:
+                                while True:
+                                    robot.drive_base.drive(0, side * -40)
+
+                                    if await retro_line_sensor.reflection() > 21:
+                                        if await pro_line_sensor.reflection() > 21:
+                                            skip = True
+                                            break
+                                        else:
+                                            robot.drive_base.curve(0, side * 4)
+
+
+                    robot.drive_base.brake()
+                
+
+                    robot.drive_base.use_gyro(False)
+                     
                     
 
 
@@ -127,8 +175,8 @@ class FollowerAlgorithm:
             turning_speed = ctx.imu.angular_velocity(vector(0,0,1))
 
             # Calculate turning rate from error
-            error = L_reflection - R_reflection
-            turn_rate = error * 6
+            error = L_reflection - R_reflection  + self.bias
+            turn_rate = error * 4
 
             if abs(turn_rate) < 10:
                 turn_rate = 0
@@ -178,11 +226,17 @@ class FollowerAlgorithm:
 
 
     async def center_aligned_manuever(self, dir):
-        self.sensor_linear_speed = 30
+        self.sensor_linear_speed = self.sensor_reduced_linear_speed
         print("Center aligned manuever")
         ctx = self.ctx
         robot = self.robot
         model = self.model
+
+        await robot.drive_base.straight(5)
+        if self.robot.R_sensor.color() == Color.BLACK and self.robot.L_sensor.color() == Color.BLACK:
+            robot.drive_base.straight(20)
+            return 
+
 
         if (dir < 0):
             pro_line_sensor = robot.L_sensor
