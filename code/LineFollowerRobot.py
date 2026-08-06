@@ -25,8 +25,10 @@ class LineFollowerRobot:
             try:
                 self.R_motor:Motor = ctx.get_port_of_type(R_motor_port, Motor)
                 self.L_motor:Motor = ctx.get_port_of_type(L_motor_port, Motor)
+                self.garra_motor:Motor = ctx.get_port_of_type(garra_motor, Motor)
                 self.R_sensor:ColorSensor = ctx.get_port_of_type(R_sensor_port, ColorSensor)
                 self.L_sensor:ColorSensor = ctx.get_port_of_type(L_sensor_port, ColorSensor)
+                self.distance_sensor:UltrasonicSensor = ctx.get_port_of_type(ultrasonic_sensor, UltrasonicSensor)
                 break
             except WrongPortError as e:
                 ctx.reload_empty_ports()
@@ -98,4 +100,25 @@ class LineFollowerRobot:
     def integrityCheckTick(self):
         self.drive_base()
     
+    async def driveUntillConditions(self, speed, turn, R_color = None, L_color = None, L_reflection_less_than = 0, R_reflection_less_than = 0, driven_distance = 9999999):
+        start_pos = self.drive_base.distance()
+        while await self.R_sensor.color() != R_color and await self.L_sensor.color() != L_color and abs(start_pos - self.drive_base.distance()) < driven_distance and await self.R_sensor.reflection() > R_reflection_less_than and await self.L_sensor.reflection() > L_reflection_less_than:
+            self.drive_base.drive(speed, turn)
+        
 
+    async def alignOnLinePerTime(self, time = 3, black_threshold = 50, k = 6):
+        ctx = self.ctx
+
+        start_pos = self.drive_base.distance()
+        self.driveUntillConditions(50, 0, R_color=Color.BLACK, L_color=Color.BLACK, driven_distance=70)
+
+        if abs(start_pos - self.drive_base.distance()) > 70:
+            self.driveUntillConditions(-50, 0, R_color=Color.BLACK, L_color=Color.BLACK, driven_distance = 170)
+
+
+        start_align = ctx.time()
+        while ctx.time() - start_align < 2:
+            p = 1 - ((ctx.time() - start_align) / 2)
+            R = await self.R_sensor.reflection()
+            L = await self.L_sensor.reflection()
+            self.drive_base.drive(p * p * 6 * ((R + L) - 100), p * (L - R)) 
