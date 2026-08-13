@@ -44,10 +44,10 @@ def main():
     follower = FollowerAlgorithm(ctx ,model, robot)
     
 
-    test_suite_mode = False
+    test_suite_mode = isTest()
     if(test_suite_mode):
         ctx.state = "test suite"
-        test_suite(ctx, robot, model)
+        run_task(test_suite(ctx, robot, model))
         wait(1000000)
 
 

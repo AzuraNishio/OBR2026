@@ -100,25 +100,53 @@ class LineFollowerRobot:
     def integrityCheckTick(self):
         self.drive_base()
     
-    async def driveUntillConditions(self, speed, turn, R_color = None, L_color = None, L_reflection_less_than = 0, R_reflection_less_than = 0, driven_distance = 9999999):
+    async def driveUntillConditions(self, speed, turn, R_color=None, L_color=None,
+                                    L_reflection_less_than=0, R_reflection_less_than=0,
+                                    driven_distance=9999999, ultrasonic_less_than=0,
+                                    ultrasonic_more_than=9999999):
         start_pos = self.drive_base.distance()
-        while await self.R_sensor.color() != R_color and await self.L_sensor.color() != L_color and abs(start_pos - self.drive_base.distance()) < driven_distance and await self.R_sensor.reflection() > R_reflection_less_than and await self.L_sensor.reflection() > L_reflection_less_than:
+
+        while True:
             self.drive_base.drive(speed, turn)
+
+            if L_color is not None and await self.L_sensor.color() == L_color:
+                break
+
+            if R_color is not None and await self.R_sensor.color() == R_color:
+                break
+
+            if abs(start_pos - self.drive_base.distance()) >= driven_distance:
+                break
+
+            if await self.R_sensor.reflection() <= R_reflection_less_than:
+                break
+
+            if await self.L_sensor.reflection() <= L_reflection_less_than:
+                break
+
+            distance = await self.distance_sensor.distance()
+            if distance <= ultrasonic_less_than:
+                break
+
+            if distance >= ultrasonic_more_than:
+                break
         
 
-    async def alignOnLinePerTime(self, time = 3, black_threshold = 50, k = 6):
+    async def alignOnLinePerTime(self, time = 3, black_threshold = 50, k = 6, speedK = 6, doPreAlign = True):
         ctx = self.ctx
 
-        start_pos = self.drive_base.distance()
-        self.driveUntillConditions(50, 0, R_color=Color.BLACK, L_color=Color.BLACK, driven_distance=70)
+        if doPreAlign:
+            start_pos = self.drive_base.distance()
+            self.driveUntillConditions(50, 0, R_color=Color.BLACK, L_color=Color.BLACK, driven_distance=70)
 
-        if abs(start_pos - self.drive_base.distance()) > 70:
-            self.driveUntillConditions(-50, 0, R_color=Color.BLACK, L_color=Color.BLACK, driven_distance = 170)
+            if abs(start_pos - self.drive_base.distance()) > 70:
+                self.driveUntillConditions(-50, 0, R_color=Color.BLACK, L_color=Color.BLACK, driven_distance = 170)
 
 
         start_align = ctx.time()
-        while ctx.time() - start_align < 2:
-            p = 1 - ((ctx.time() - start_align) / 2)
+        while ctx.time() - start_align < time:
+            p = 1.1 - ((ctx.time() - start_align ) / 2)
             R = await self.R_sensor.reflection()
             L = await self.L_sensor.reflection()
-            self.drive_base.drive(p * p * 6 * ((R + L) - 100), p * (L - R)) 
+            self.drive_base.drive(p * k * ((R + L) - (black_threshold * 2)), speedK * p * (L - R)) 
+        self.drive_base.hold()

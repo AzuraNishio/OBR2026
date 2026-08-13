@@ -12,20 +12,19 @@ from Model import *
 from umath import *
 from FollowerAlgorithm import *
 from TestSuite import *
+from Scaffolding import Context
+
+def isTest():
+    return False
 
 
-def test_suite(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):
+async def test_suite(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):
     
     print("Meoww! Testing time!")
     while True:
-        ctx.show_string_encoded_img(
-                    """ .....
-                        ..9..
-                        .999.
-                        ..9..
-                        ....."""
-                )
-        wait(1000)
+  
+        re = await robot.R_sensor.reflection()
+        print(f"{re}")
  
     
 
