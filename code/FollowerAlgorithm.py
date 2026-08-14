@@ -43,6 +43,8 @@ class FollowerAlgorithm:
         self.lastCheck = 0
         self.gapCheckDistance = 220
         self.silver_min_threshold = 95
+        self.last_error = 0
+        self.last_derivative = 0
 
         #robot.drive_base.use_gyro(True)
 
@@ -59,7 +61,7 @@ class FollowerAlgorithm:
             self.tps_counter = 0
             self.last_tps_check = self.ctx.time()
 
-        await self.fuzzy_loop(dT)
+        await self.fuzzy_loop(max(0.1, dT))
 
     def freeze_tps(self):
         self.interval = self.ctx.time() - self.last_tps_check
@@ -292,7 +294,12 @@ class FollowerAlgorithm:
 
         # Calculate turning rate from error
         error = L_reflection - R_reflection + self.bias
-        turn_rate = error * 4
+        derivative = (error - self.last_error) / dT
+        second_derivative = (derivative - self.last_derivative) / dT
+        self.last_error = error
+        self.last_derivative = derivative
+
+        turn_rate = (error * 4) + (derivative) + (second_derivative * 0.1)
 
         if abs(turn_rate) < 10:
             turn_rate = 0

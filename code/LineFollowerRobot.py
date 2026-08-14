@@ -132,21 +132,29 @@ class LineFollowerRobot:
                 break
         
 
-    async def alignOnLinePerTime(self, time = 3, black_threshold = 50, k = 6, speedK = 6, doPreAlign = True):
+    async def alignOnLinePerTime(self, time = 3, black_threshold = 30, k = 6, speedK = 6, doPreAlign = True):
         ctx = self.ctx
 
         if doPreAlign:
             start_pos = self.drive_base.distance()
-            self.driveUntillConditions(50, 0, R_color=Color.BLACK, L_color=Color.BLACK, driven_distance=70)
+            await self.driveUntillConditions(100, 0, R_color=Color.BLACK, L_color=Color.BLACK, driven_distance=100)
 
-            if abs(start_pos - self.drive_base.distance()) > 70:
-                self.driveUntillConditions(-50, 0, R_color=Color.BLACK, L_color=Color.BLACK, driven_distance = 170)
+            if abs(start_pos - self.drive_base.distance()) > 100:
+                await self.driveUntillConditions(-50, 0, R_color=Color.BLACK, L_color=Color.BLACK, driven_distance = 170)
 
 
         start_align = ctx.time()
+        last_error = 0
+        last_time = ctx.time()
         while ctx.time() - start_align < time:
-            p = 1.1 - ((ctx.time() - start_align ) / 2)
+            p = min(1, 1.5 - ((ctx.time() - start_align) / time))
+            dt = max(0.02, ctx.time() - last_time)
+            last_time = ctx.time()
+
             R = await self.R_sensor.reflection()
             L = await self.L_sensor.reflection()
-            self.drive_base.drive(p * k * ((R + L) - (black_threshold * 2)), speedK * p * (L - R)) 
+            error = (R - L)
+            derivative = (error - last_error)  / dt
+            last_error = error
+            self.drive_base.drive((R + L - (black_threshold * 2)) * speedK / (abs(error) + 1) * p, -k * error - (derivative) * p) 
         self.drive_base.hold()

@@ -13,18 +13,31 @@ from umath import *
 from FollowerAlgorithm import *
 from TestSuite import *
 from Scaffolding import Context
+from usys import stdin
+from uselect import poll
 
 def isTest():
-    return False
+    return True
 
 
 async def test_suite(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):
-    
-    print("Meoww! Testing time!")
+    #await robot.alignOnLinePerTime(3)
+    # Import required MicroPython libraries.
+
+
+    # Register the standard input so we can read keyboard presses.
+    keyboard = poll()
+    keyboard.register(stdin)
+
     while True:
-  
-        re = await robot.R_sensor.reflection()
-        print(f"{re}")
+        # Check if a key has been pressed.
+        if keyboard.poll(0):
+
+            # Read the key and print it.
+            key = stdin.read(1)
+            print("You pressed:", key)
+
+
  
     
 
