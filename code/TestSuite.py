@@ -17,25 +17,28 @@ from usys import stdin
 from uselect import poll
 
 def isTest():
-    return True
+    return False
+
+def room3_in_out_img(IN, out):
+        s = """
+        9IHG9
+        J...F
+        K...E            
+        L...D
+        9ABC9
+        """.replace("-ABCDEFGHIJKL"[int(IN)], "6").replace("-ABCDEFGHIJKL"[int(out)], "0")
+
+        for i in range(12):
+             s = s.replace("ABCDEFGHIJKL"[i], "9")
+
+        return s
 
 
 async def test_suite(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):
-    #await robot.alignOnLinePerTime(3)
-    # Import required MicroPython libraries.
-
-
-    # Register the standard input so we can read keyboard presses.
-    keyboard = poll()
-    keyboard.register(stdin)
-
+    robot.garraDown()
     while True:
-        # Check if a key has been pressed.
-        if keyboard.poll(0):
+        pass
 
-            # Read the key and print it.
-            key = stdin.read(1)
-            print("You pressed:", key)
 
 
  

@@ -42,7 +42,8 @@ class FailHandler:
         
     
     def refresh_display(self):
-        self.ctx.show_string_encoded_img(self.display_state)
+        if self.display_state != "":
+            self.ctx.show_string_encoded_img(self.display_state)
         self.display_state = ""
         
 

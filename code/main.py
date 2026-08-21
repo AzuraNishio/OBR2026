@@ -40,6 +40,8 @@ def main():
     ctx.state = "Initializing model"
     model = TreadmilDifferentialDriveRobotModel(ctx, robot)
 
+    ctx.robot = robot
+
     ctx.state = "Initializing follower algorithm"
     follower = FollowerAlgorithm(ctx ,model, robot)
     

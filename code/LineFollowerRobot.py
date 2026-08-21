@@ -8,6 +8,7 @@ from pybricks.parameters import *
 from libs.Utills import *
 from libs.AwareRobotics.AwDriveBase import *
 from Scaffolding import *
+from libs.Exceptions import *
 
 
 class LineFollowerRobot:
@@ -99,6 +100,26 @@ class LineFollowerRobot:
 
     def integrityCheckTick(self):
         self.drive_base()
+
+    async def _garraDownRoutine(self):
+        await self.garra_motor.run_time(1000, 1000)
+
+    async def garraDown(self):
+        await self.drive_base.straight(10)
+        await self.garra_motor.run_time(1000, 1000)
+
+        #multitask(self._garraDownRoutine())
+
+    async def _garraUpRoutine(self):
+        await self.garra_motor.run_time(-1000, 1000)
+
+
+    async def garraUp(self):
+        await self.drive_base.straight(10)
+        await self.garra_motor.run_time(-1000, 1300)
+
+        #multitask(self._garraUpRoutine())
+
     
     async def driveUntillConditions(self, speed, turn, R_color=None, L_color=None,
                                     L_reflection_less_than=0, R_reflection_less_than=0,
@@ -130,17 +151,12 @@ class LineFollowerRobot:
 
             if distance >= ultrasonic_more_than:
                 break
+        self.drive_base.brake()
         
 
     async def alignOnLinePerTime(self, time = 3, black_threshold = 30, k = 6, speedK = 6, doPreAlign = True):
         ctx = self.ctx
-
-        if doPreAlign:
-            start_pos = self.drive_base.distance()
-            await self.driveUntillConditions(100, 0, R_color=Color.BLACK, L_color=Color.BLACK, driven_distance=100)
-
-            if abs(start_pos - self.drive_base.distance()) > 100:
-                await self.driveUntillConditions(-50, 0, R_color=Color.BLACK, L_color=Color.BLACK, driven_distance = 170)
+        self.drive_base.use_gyro(False)
 
 
         start_align = ctx.time()
@@ -156,5 +172,6 @@ class LineFollowerRobot:
             error = (R - L)
             derivative = (error - last_error)  / dt
             last_error = error
-            self.drive_base.drive((R + L - (black_threshold * 2)) * speedK / (abs(error) + 1) * p, -k * error - (derivative) * p) 
+            b = 1 if abs(error) > 6 else 0
+            self.drive_base.drive((R + L - (black_threshold * 2)) * speedK / (abs(error) + 1) * p, -k * error - (derivative) * p * b) 
         self.drive_base.hold()

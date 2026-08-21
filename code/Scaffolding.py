@@ -1,13 +1,14 @@
 from pybricks import *
 from pybricks.hubs import *
 from pybricks import *
+from pybricks.parameters import *
 from pybricks.iodevices import *
 from pybricks.robotics import *
 from pybricks.hubs import *
 from pybricks.pupdevices import *
+import sys
 from libs.Utills import *
-from libs.Exceptions import * 
-from FailHandler import *
+from LineFollowerRobot import LineFollowerRobot
 
 class Context:
     def __init__(self, errorHandler: FailHandler):
@@ -22,6 +23,7 @@ class Context:
         self.battery = self.hub.battery
         self.cron = StopWatch()
         self.display.off()
+        self.robot: LineFollowerRobot = None
         errorHandler.bindContext(self)
         print("\033[2J\033[H", end="")
         print("\n")
@@ -33,8 +35,6 @@ class Context:
     
     def throw(self, e: Exception):
         self.errorHandler.exception(e)
-
-    
     
     def time_ms(self):
         return self.cron.time()
@@ -51,8 +51,6 @@ class Context:
             return pp
         else:
             return self.ports[str(port)]
-        
-
         
     def setup_ports(self):
         self.ports = {}
@@ -81,8 +79,10 @@ class Context:
     def show_string_encoded_img(self, s):
         i = 0
         for c in s:
-            if c in "0123456789.":
-                if c != ".":
+            if c in "0123456789.ABCDEFGHIJKLMNOPQRSTUV":
+                if c in "ABCDEFGHIJKLMNOPQRSTUV":
+                    self.display.pixel((i - (i % 5)) / 5, i % 5, 3)
+                elif c != ".":
                     self.display.pixel((i - (i % 5)) / 5, i % 5, int(c) * 10)
                 else:
                     self.display.pixel((i - (i % 5)) / 5, i % 5, 0)
@@ -90,8 +90,14 @@ class Context:
             
 
     async def routine(self):
-        await wait(20)
-        self.errorHandler.refresh_display()
+        while True:
+            await wait(20)
+            self.errorHandler.refresh_display()
+            if await self.robot.L_sensor.color() == Color.RED:
+                self.robot.drive_base.stop()
+
+                sys.exit()
+
 
 
 

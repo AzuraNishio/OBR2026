@@ -45,6 +45,7 @@ class FollowerAlgorithm:
         self.silver_min_threshold = 95
         self.last_error = 0
         self.last_derivative = 0
+        self.obstacle_side = -1
 
         #robot.drive_base.use_gyro(True)
 
@@ -174,6 +175,7 @@ class FollowerAlgorithm:
 
     async def handle_obstacle_avoidance(self):
         robot = self.robot
+        l = self.obstacle_side
 
         distance = await robot.distance_sensor.distance()
 
@@ -181,35 +183,36 @@ class FollowerAlgorithm:
             return
 
         await robot.drive_base.straight(distance)
+        await robot.drive_base.straight(-20)
 
         robot.drive_base.use_gyro(True)
         await robot.drive_base.straight(-10)
 
-        await robot.drive_base.turn(90)
+        await robot.drive_base.turn(l * 90)
 
         await robot.drive_base.straight(-100)
-        await robot.alignOnLinePerTime(2)
+        await robot.alignOnLinePerTime(3)
         await robot.drive_base.straight(150)
 
         while True:
-            await robot.drive_base.turn(-90)
+            await robot.drive_base.turn(l * -90)
             if await robot.distance_sensor.distance() > 80:
-                await robot.drive_base.turn(90)
+                await robot.drive_base.turn(l * 90)
                 await robot.drive_base.straight(110)
-                await robot.drive_base.turn(-90)
+                await robot.drive_base.turn(l * -90)
                 break
             else:
-                await robot.drive_base.turn(90)
+                await robot.drive_base.turn(l * 90)
                 await robot.drive_base.straight(60)
 
-        await robot.drive_base.straight(300)
-        await robot.drive_base.turn(-90)
+        await robot.drive_base.straight(360)
+        await robot.drive_base.turn(l * -90)
 
         while await robot.R_sensor.reflection() > 30:
-            robot.drive_base.drive(50, 0)
+            robot.drive_base.drive(100, 0)
 
         await robot.drive_base.straight(70)
-        await robot.drive_base.turn(90)
+        await robot.drive_base.turn(l * 90)
 
         robot.drive_base.use_gyro(False)
         self.lastCheck = robot.drive_base.distance()
