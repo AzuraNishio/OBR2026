@@ -50,6 +50,7 @@ class Room3info:
     def markOutput(self, n):
         if n != -1 and not n == self.input:
             print(f"Marked output {n}!")
+            self.output = n
         self.markInOutPosDisplay()
 
     def markInput(self, n):
