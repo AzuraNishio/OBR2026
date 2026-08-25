@@ -88,7 +88,8 @@ class Room3info:
 async def room3check(robot: LineFollowerRobot, ctx: Context):
     print("Checking for room3!!")
     await robot.drive_base.straight(70) # Drive straight to check wether its a ramp
-    if not abs(ctx.imu.tilt()[0]) > 10: # If it's not tilted, run room3
+    print(ctx.imu.tilt()[0])
+    if not abs(ctx.imu.tilt()[0]) > 6: # If it's not tilted, run room3
         await robot.drive_base.straight(-80)
         await room3(robot, ctx)
     else:

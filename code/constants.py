@@ -10,7 +10,7 @@ class line_follower_constants:
     sensor_linear_speed_ramp_duration = 0.5
 
     # Constants for the gap check maneuver in mm
-    gap_check_distance = 220
+    gap_check_distance = 250
 
     # Minimum value for the silver detection in %
     silver_min_threshold = 95
@@ -21,7 +21,7 @@ class line_follower_constants:
     # PD controller coefficients
     KP = 4.0
     KD = 1.0
-    KD2 = 1.0
+    KD2 = 0.1
 
     # Line follower bias to compensate for sensor misalignment or other factors
     bias = -4
