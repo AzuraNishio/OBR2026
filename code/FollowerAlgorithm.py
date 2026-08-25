@@ -12,6 +12,7 @@ from Model import *
 from umath import *
 from libs.AwareRobotics.AwDriveBase import *
 from Room3 import room3check
+from constants import *
 
 class FollowerAlgorithm:
     def __init__(self, ctx: Context, model: TreadmilDifferentialDriveRobotModel, robot: LineFollowerRobot):
@@ -33,19 +34,17 @@ class FollowerAlgorithm:
         self.tps = 500
         self.tps_counter = 0
         self.last_tps_check = ctx.time()
-        self.max_sensor_linear_speed = 160
-        self.sensor_linear_speed = 160
-        self.sensor_reduced_linear_speed = 80
-        self.sensor_linear_speed_ramp_duration = 0.5
+        # initialize sensor linear speed to configured max
+        self.sensor_linear_speed = line_follower_constants.max_sensor_linear_speed
+
+        # runtime state
+        # `sensor_linear_speed` initialized to configured max
+
         self.last_time = self.ctx.time()
-        self.bias = -4
         self.obstacleTriggerDistance = 80
         self.lastCheck = 0
-        self.gapCheckDistance = 220
-        self.silver_min_threshold = 95
         self.last_error = 0
         self.last_derivative = 0
-        self.obstacle_side = -1
 
         #robot.drive_base.use_gyro(True)
 
@@ -89,7 +88,7 @@ class FollowerAlgorithm:
 
         await self.handle_obstacle_avoidance()
 
-        if darkest > self.silver_min_threshold:
+        if darkest > line_follower_constants.silver_min_threshold:
             await room3check(robot, self.ctx)
 
         if darkest < 11: # Check wether a sensor detected black. If so run green check and crossing check
@@ -147,7 +146,7 @@ class FollowerAlgorithm:
     async def handle_gap_detection(self):
         robot = self.robot
 
-        if robot.drive_base.distance() - self.lastCheck <= self.gapCheckDistance:
+        if robot.drive_base.distance() - self.lastCheck <= line_follower_constants.gap_check_distance:
             return
 
         robot.drive_base.use_gyro(True)
@@ -175,7 +174,7 @@ class FollowerAlgorithm:
 
     async def handle_obstacle_avoidance(self):
         robot = self.robot
-        l = self.obstacle_side
+        l = line_follower_constants.obstacle_side
 
         distance = await robot.distance_sensor.distance()
 
@@ -296,13 +295,14 @@ class FollowerAlgorithm:
         turning_speed = ctx.imu.angular_velocity(vector(0, 0, 1))
 
         # Calculate turning rate from error
-        error = L_reflection - R_reflection + self.bias
+        error = L_reflection - R_reflection + line_follower_constants.bias
         derivative = (error - self.last_error) / dT
         second_derivative = (derivative - self.last_derivative) / dT
         self.last_error = error
         self.last_derivative = derivative
 
-        turn_rate = (error * 4) + (derivative) + (second_derivative * 0.1)
+        # PD controller using gains from constants
+        turn_rate = (error * line_follower_constants.KP) + (derivative * line_follower_constants.KD) + (second_derivative * line_follower_constants.KD2)
 
         if abs(turn_rate) < 10:
             turn_rate = 0
@@ -326,10 +326,10 @@ class FollowerAlgorithm:
 
     def _ramp_linear_speed(self, dT):
         sensor_linear_speed = self.sensor_linear_speed
-        if self.sensor_linear_speed < self.max_sensor_linear_speed:
-            self.sensor_linear_speed += dT * self.max_sensor_linear_speed / self.sensor_linear_speed_ramp_duration
+        if self.sensor_linear_speed < line_follower_constants.max_sensor_linear_speed:
+            self.sensor_linear_speed += dT * line_follower_constants.max_sensor_linear_speed / line_follower_constants.sensor_linear_speed_ramp_duration
         else:
-            self.sensor_linear_speed = self.max_sensor_linear_speed
+            self.sensor_linear_speed = line_follower_constants.max_sensor_linear_speed
         return sensor_linear_speed
 
     # endregion
@@ -337,7 +337,7 @@ class FollowerAlgorithm:
     # region Center Aligned Manuever
 
     async def center_aligned_manuever(self, dir):
-        self.sensor_linear_speed = self.sensor_reduced_linear_speed
+        self.sensor_linear_speed = line_follower_constants.sensor_reduced_linear_speed
         print("Center aligned manuever")
         robot = self.robot
 
