@@ -28,7 +28,7 @@ class FailHandler:
         else:
             print(e)
 
-        # raise e
+        raise e
     
     def stuck_while_driving(self, base: AwDriveBase, state: str, time: int):
         if time > 500:

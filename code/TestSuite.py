@@ -35,9 +35,12 @@ def room3_in_out_img(IN, out):
 
 
 async def test_suite(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):
-    robot.garraDown()
-    while True:
-        pass
+
+    await robot.curve(-60, -180)
+
+    
+
+
 
 
 

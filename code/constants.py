@@ -25,3 +25,12 @@ class line_follower_constants:
 
     # Line follower bias to compensate for sensor misalignment or other factors
     bias = -4
+
+
+class room3_const:
+    U = 300
+    straight_speed = 430
+    straight_to_wall_torque_threshold = 200 
+    straight_till_speed = 200
+    triangle_angle_threshold = 6
+    triangle_single_motor_torque = 100

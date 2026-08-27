@@ -10,6 +10,16 @@ import sys
 from libs.Utills import *
 from LineFollowerRobot import LineFollowerRobot
 
+class waiter:
+    def __init__(self, ctx, duration, inverted = False):
+        self.ctx = ctx
+        self.inverted = inverted
+        self.end_time = ctx.time() + duration
+
+    def __bool__(self):
+        return not self.inverted if self.ctx.time() > self.end_time else self.inverted
+
+
 class Context:
     def __init__(self, errorHandler: FailHandler):
         self.state = "initializing context"
@@ -29,6 +39,12 @@ class Context:
         print("\n")
         self.setup_ports()
         self.hub_info_dump()
+
+    async def wait(self, time):
+        start_time = self.time()
+        while True:
+            if self.time() - start_time > time:
+                break
     
     def time(self):
         return self.cron.time() * 0.001
@@ -38,6 +54,12 @@ class Context:
     
     def time_ms(self):
         return self.cron.time()
+
+    def get_waiter(self, duration):
+        return waiter(self, duration)
+
+    def get_invereted_waiter(self, duration):
+        return waiter(self, duration, inverted = True)
 
     def setup_one_port(self, port: Port):
         pp = connect_port_device(port)
