@@ -16,7 +16,7 @@ class line_follower_constants:
     silver_min_threshold = 95
 
     # Side to go around the obstacle, -1 for left, 1 for right
-    obstacle_side = -1
+    obstacle_side = 1
 
     # PD controller coefficients
     KP = 4.0
@@ -30,7 +30,7 @@ class line_follower_constants:
 class room3_const:
     U = 300
     straight_speed = 430
-    straight_to_wall_torque_threshold = 200 
+    straight_to_wall_torque_threshold = 160 
     straight_till_speed = 200
     triangle_angle_threshold = 6
     triangle_single_motor_torque = 100

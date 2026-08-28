@@ -15,6 +15,7 @@ from TestSuite import *
 from Scaffolding import Context
 from usys import stdin
 from uselect import poll
+import Room3
 
 def isTest():
     return False
@@ -35,10 +36,13 @@ def room3_in_out_img(IN, out):
 
 
 async def test_suite(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):
+    while True:
+        robot.drive(600, 0)
 
-    await robot.curve(-60, -180)
 
-    
+        
+
+        
 
 
 

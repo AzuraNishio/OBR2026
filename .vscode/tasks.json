@@ -3,17 +3,47 @@
     "tasks": [
         {
             "label": "main",
-            "type": "process",
-            "command": "${workspaceFolder}\\.venv\\Scripts\\pybricksdev.exe",
+            "type": "shell",
+            "command": "powershell",
             "args": [
-                "run",
-                "ble",
-                "code/main.py"
+                "-NoProfile",
+                "-Command",
+                "$maxRetries = 3; $attempt = 0; while ($attempt -lt $maxRetries) { $attempt++; Write-Host \"\\n=== Attempt $attempt of $maxRetries ===\"; & .venv\\Scripts\\pybricksdev.exe run ble code/main.py; if ($LASTEXITCODE -eq 0) { exit 0 } elseif ($attempt -lt $maxRetries) { Write-Host \"Connection failed, retrying in 2 seconds...\"; Start-Sleep -Seconds 2 } }; exit $LASTEXITCODE"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"
             },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
             "problemMatcher": []
+        },
+        {
+            "label": "stop",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-NoProfile",
+                "-Command",
+                "$stopScript = @'\nimport sys\nimport asyncio\nfrom pybricksdev.connections import PybricksBLE\n\nasync def stop_program():\n    try:\n        hub = await PybricksBLE.find_device()\n        print(f\"Stopping program on {hub.device_info.name}...\")\n        await hub.stop()\n        print(\"Program stopped.\")\n    except Exception as e:\n        print(f\"Could not stop program: {e}\")\n        print(\"Try pressing the hub's button to stop the program.\")\n\nasyncio.run(stop_program())\n'@; $stopScript | & .venv\\Scripts\\python.exe -"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": [],
+            "group": {
+                "kind": "test",
+                "isDefault": false
+            }
         }
     ]
 }

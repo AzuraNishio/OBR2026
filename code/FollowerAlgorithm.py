@@ -158,7 +158,7 @@ class FollowerAlgorithm:
 
         if not isLine:
             await robot.drive_base.curve(40, -10)
-            await robot.drive_base.straight(-10 - self.gapCheckDistance)
+            await robot.drive_base.straight(-10 - line_follower_constants.gap_check_distance)
             await robot.drive_base.curve(40, -60)
             await robot.driveUntillConditions(-70, 0, L_reflection_less_than=40)
         else:
@@ -181,8 +181,8 @@ class FollowerAlgorithm:
         if distance >= self.obstacleTriggerDistance:
             return
 
-        await robot.drive_base.straight(distance)
-        await robot.drive_base.straight(-20)
+        await robot.drive_base.straight(distance - 20)
+        await robot.drive_base.straight(-40)
 
         robot.drive_base.use_gyro(True)
         await robot.drive_base.straight(-10)
@@ -204,7 +204,7 @@ class FollowerAlgorithm:
                 await robot.drive_base.turn(l * 90)
                 await robot.drive_base.straight(60)
 
-        await robot.drive_base.straight(360)
+        await robot.drive_base.straight(400)
         await robot.drive_base.turn(l * -90)
 
         while await robot.R_sensor.reflection() > 30:
@@ -242,8 +242,8 @@ class FollowerAlgorithm:
         await robot.drive_base.straight(70)
 
         if side == 0:  # If 180 them turn 170
-            await robot.drive_base.curve(0, 170)
-            side = 1  # Sets side to 1 so turn till line works
+            await robot.drive_base.curve(0, -170)
+            side = -1  # Sets side to 1 so turn till line works
         else:  # Else turn 80 in the direction
             await robot.drive_base.curve(0, 60 * side)
 

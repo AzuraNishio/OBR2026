@@ -16,16 +16,16 @@ class LineFollowerRobot:
         """Forward attributes not defined here to the drive base."""
         return getattr(self.drive_base, name)
 
-    async def straight(self, distance, speed = None, *args, **kwargs):
+    async def straight(self, distance, speed = None):
         if not speed is None:
             self.drive_base.settings(straight_speed = speed)
         else:
             self.drive_base.settings(straight_speed = self.modified_straight_speed or self.default_straight_speed, straight_acceleration= 700)
 
-        return await self.drive_base.straight(distance, *args, **kwargs)
+        return await self.drive_base.straight(distance)
 
-    async def turn(self, angle, *args, **kwargs):
-        return await self.drive_base.turn(angle + copysign(1, angle), *args, **kwargs)
+    async def turn(self, angle):
+        return await self.drive_base.turn(angle + copysign(1, angle))
 
     def __init__(self, ctx: Context, L_sensor_port, R_sensor_port, L_motor_port, R_motor_port, wheel_diameter, wheel_distance, X_distance_CoR_sensor, Y_distance_CoR_sensor, R_motor_forward_direction = Direction.CLOCKWISE, L_motor_forward_direction = Direction.CLOCKWISE, ultrasonic_sensor = "E", garra_motor = "F"):
         self.garra_up = True
