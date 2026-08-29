@@ -19,8 +19,9 @@ class line_follower_constants:
     silver_min_threshold = 95
 
     # Side to go around the obstacle, -1 for left, 1 for right
-    obstacle_side = 1
-    do_obstacle = False
+    obstacle_side = -1
+    do_obstacle = True
+    obstacle_parallel_dist = 450
 
     # PD controller coefficients
     KP = 4.0

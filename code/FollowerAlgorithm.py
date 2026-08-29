@@ -228,8 +228,10 @@ class FollowerAlgorithm:
                 await robot.drive_base.turn(l * 90)
                 await robot.drive_base.straight(60)
 
-        await robot.drive_base.straight(400)
+        await robot.drive_base.straight(line_follower_constants.obstacle_parallel_dist)
         await robot.drive_base.turn(l * -90)
+        await robot.drive_base.straight(40)
+
 
         while await robot.R_sensor.reflection() > 30:
             robot.drive_base.drive(100, 0)
@@ -269,7 +271,7 @@ class FollowerAlgorithm:
             await robot.drive_base.curve(0, -90)
             await robot.straight(15)
             await robot.drive_base.curve(0, -80)
-            side = -1  # Sets side to 1 so turn till line works
+            side = -1  # Sets side to -1 so turn till line works
         else:  # Else turn 80 in the direction
             await robot.drive_base.curve(0, 60 * side)
 

@@ -709,7 +709,22 @@ async def room3_exit_maneuver(robot: LineFollowerRobot, ctx: Context, data: Room
     await robot.alignOnLinePerTime(2)
     await robot.straight(-100)
     await robot.turn(90)
-    await align_wall_distance_if_reasonable(robot, data.U * 1.55, n = 11) #<---------------------------------------
+
+
+
+    """    Note to myself: FIX EDGE CASES OF In3Out4, In3Out5, In3Out6
+               _9_8_7_          distance alignement 
+           10 |^> > >V| 6       [1, 4, 7, 10] - 0.55 U
+           11 |^  *  V| 5       [2, 5, 8, 11] - 1.55 U
+           12 |^<_<_<V| 4       [3, 6, 9, 12] - 2.55 U
+                1 2 3
+    """
+
+    if   data.output in [1, 4, 7, 10]: center_align_dist = 0.55 * data.U
+    elif data.output in [2, 5, 8, 11]: center_align_dist = 1.55 * data.U
+    elif data.output in [3, 6, 9, 12]: center_align_dist = 2.55 * data.U
+
+    await align_wall_distance_if_reasonable(robot, center_align_dist) #<---------------------------------------
     await robot.turn(-90)
     await robot.straight(180)
 
