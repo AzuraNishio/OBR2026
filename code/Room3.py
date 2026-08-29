@@ -12,7 +12,7 @@ from libs.AwareRobotics.AwDriveBase import *
 from LineFollowerRobot import LineFollowerRobot
 from Scaffolding import *
 from math import *
-from constants import room3_const
+from constants import room3_const, surprises
 
 async def beep_n(robot: LineFollowerRobot, times):
     robot.ctx.speaker.volume(100)
@@ -133,6 +133,9 @@ async def room3check(robot: LineFollowerRobot, ctx: Context):
             return
         await robot.turn(-20)
         
+        # Surprise challenge (ignore)
+        if surprises.signal_on_room3:
+            await robot.signal_blink_ultrasonic()
 
         await room3(robot, ctx)
                 

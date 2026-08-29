@@ -118,6 +118,14 @@ class LineFollowerRobot:
     def set_modified_straight_speed(self, speed):
         self.modified_straight_speed = speed
 
+    async def signal_blink_ultrasonic(self):
+        for i in range(4): 
+            self.distance_sensor.lights.on((100, 0, 100, 0))
+            await self.ctx.wait(0.125)
+            self.distance_sensor.lights.on((0, 100, 0, 100))
+            await self.ctx.wait(0.125)
+        self.distance_sensor.lights.off()
+
     def is_forcing_motor(self, force):
         return abs(self.L_motor.load()) > force or abs(self.R_motor.load()) > force 
 
@@ -128,8 +136,6 @@ class LineFollowerRobot:
         return (1 if await self.R_sensor.reflection() < 30 else 0) - (1 if await self.L_sensor.reflection() < 30 else 0)
 
     async def align_on_line_thingie(self, pro_line_sensor, retro_line_sensor, side):
-        self
-
         skip = False
         flip = False
         start_angle = self.ctx.imu.heading()
@@ -156,13 +162,13 @@ class LineFollowerRobot:
                         else:
                             self.drive_base.curve(0, side * 4)
 
-            if abs(self.ctx.imu.heading() - start_angle) > 50:
+            if abs(self.ctx.imu.heading() - start_angle) > 60:
                 flip = True
-                await self.drive_base.turn(side * -40)
+                await self.drive_base.turn(side * -50)
                 break
 
         if flip:
-            await self._green_turn_until_line(retro_line_sensor, pro_line_sensor, -side)
+            await self.align_on_line_thingie(retro_line_sensor, pro_line_sensor, -side)
 
     def clear_modified_straigth_speed(self):
         self.modified_straight_speed = None

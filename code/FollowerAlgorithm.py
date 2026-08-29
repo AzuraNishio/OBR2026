@@ -203,15 +203,13 @@ class FollowerAlgorithm:
 
         if distance >= line_follower_constants.obstacle_trigger_dist:
             return
-         
+        
         self.robot.brake()
-        await self.ctx.wait(6)
-        for i in range(4):
-            self.robot.distance_sensor.lights.on((100, 0, 100, 0))
-            await self.ctx.wait(0.125)
-            self.robot.distance_sensor.lights.on((0, 100, 0, 100))
-            await self.ctx.wait(0.125)
-        robot.distance_sensor.lights.off()
+
+        # Surprise challenge (ignore)
+        if surprises.signal_on_obstacle:
+            await self.ctx.wait(6)
+            await robot.signal_blink_ultrasonic()
 
         await robot.drive_base.straight(distance - 20)
         await robot.drive_base.straight(-40)

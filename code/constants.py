@@ -40,3 +40,7 @@ class room3_const:
     straight_till_speed = 200
     triangle_angle_threshold = 6
     triangle_single_motor_torque = 100
+
+class surprises:
+    signal_on_obstacle = False
+    signal_on_room3 = True
