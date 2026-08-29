@@ -264,8 +264,14 @@ async def room3_entrance_and_low_sector(robot: LineFollowerRobot, data: Room3inf
            12 |__low__| 4
                 1 2 3
     """
+    await robot.turn(-10)
+
     await robot.straight(data.U * 0.6)
-    await robot.turn(95)
+    start_angle = robot.ctx.imu.heading()
+    start_time  = robot.ctx.time()
+    await robot.turn(105)
+
+
 
     """
                _9_8_7_
@@ -362,6 +368,9 @@ async def room3_mid_sector(robot: LineFollowerRobot, data: Room3info):
         robot.drive(-400, error * 16)
         if abs(robot.drive_base.distance() - start_dist) > data.U * 4:
             break
+        if robot.is_forcing_motor(room3_const.straight_to_wall_torque_threshold):
+            await robot.move_time(0.5)
+            break
         if await robot.is_seeing_any_black():
             data.markOutput(5)
             robot.brake()
@@ -451,7 +460,6 @@ async def room3_high_sector(robot: LineFollowerRobot, data: Room3info):
 
     await data.testOutputIfMissing(2)
     await robot.straight(60)
-
     await robot.garraDown()
     await straight_back_untill_black_or_wall_and_mark(8, robot, data, do_triangle=False)
     await robot.garraUp()

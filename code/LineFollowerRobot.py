@@ -118,6 +118,9 @@ class LineFollowerRobot:
     def set_modified_straight_speed(self, speed):
         self.modified_straight_speed = speed
 
+    def is_forcing_motor(self, force):
+        return abs(self.L_motor.load()) > force or abs(self.R_motor.load()) > force 
+
     async def is_seeing_any_black(self):
         return await self.R_sensor.reflection() < 30 or await self.L_sensor.reflection() < 30
 

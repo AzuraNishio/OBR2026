@@ -41,7 +41,6 @@ class FollowerAlgorithm:
         # `sensor_linear_speed` initialized to configured max
 
         self.last_time = self.ctx.time()
-        self.obstacleTriggerDistance = 80
         self.lastCheck = 0
         self.last_error = 0
         self.last_derivative = 0
@@ -87,7 +86,7 @@ class FollowerAlgorithm:
         if R_reflection < 50 or L_reflection < 50:
             self.lastCheck = robot.drive_base.distance()
 
-        if line_follower_constants.do_obstacle: self.handle_obstacle_avoidance()
+        if line_follower_constants.do_obstacle: await self.handle_obstacle_avoidance()
 
         if darkest > line_follower_constants.silver_min_threshold:
             await room3check(robot, self.ctx)
@@ -202,8 +201,17 @@ class FollowerAlgorithm:
 
         distance = await robot.distance_sensor.distance()
 
-        if distance >= self.obstacleTriggerDistance:
+        if distance >= line_follower_constants.obstacle_trigger_dist:
             return
+         
+        self.robot.brake()
+        await self.ctx.wait(6)
+        for i in range(4):
+            self.robot.distance_sensor.lights.on((100, 0, 100, 0))
+            await self.ctx.wait(0.125)
+            self.robot.distance_sensor.lights.on((0, 100, 0, 100))
+            await self.ctx.wait(0.125)
+        robot.distance_sensor.lights.off()
 
         await robot.drive_base.straight(distance - 20)
         await robot.drive_base.straight(-40)

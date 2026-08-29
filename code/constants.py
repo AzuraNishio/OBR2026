@@ -22,6 +22,7 @@ class line_follower_constants:
     obstacle_side = -1
     do_obstacle = True
     obstacle_parallel_dist = 450
+    obstacle_trigger_dist = 60
 
     # PD controller coefficients
     KP = 4.0
