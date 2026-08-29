@@ -36,8 +36,7 @@ def room3_in_out_img(IN, out):
 
 
 async def test_suite(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):
-    while True:
-        robot.drive(600, 0)
+    await Room3.test("0-1", robot, 5, ctx)
 
 
         

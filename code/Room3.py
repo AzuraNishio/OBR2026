@@ -12,6 +12,13 @@ from Scaffolding import *
 from math import *
 from constants import room3_const
 
+async def beep_n(robot: LineFollowerRobot, times):
+    robot.ctx.speaker.volume(100)
+    for i in range(times):
+        await robot.ctx.wait(0.1)
+        await robot.ctx.speaker.beep()
+
+
 class Room3info:
     def __init__(self, robot: LineFollowerRobot):
         self.robot = robot
@@ -99,15 +106,29 @@ async def room3check(robot: LineFollowerRobot, ctx: Context):
            12 |___^___| 4   ^ robot approaching room 3 entrance, about to test for ramp
                 1 2 3
     """
-    if not abs(ctx.imu.tilt()[0]) > 6: # If it's not tilted, run room3
+    if not abs(ctx.imu.tilt()[0]) > 5: # If it's not tilted, run room3
         print("Checking for room3!!")
+        for i in range(6):
+            await robot.straight(70 / 6) # Drive straight to check wether its a ramp
+            if abs(ctx.imu.tilt()[0]) > 5: # If tilted, move until not tilted OR 30 cm
+                for j in range(6):
+                    await robot.straight(50) # Drive straight to check wether its not a ramp
+                    error = await robot.L_sensor.reflection() - await robot.R_sensor.reflection()
+                    if abs(error) > 30:
+                        await robot.turn(0.1 * error)
+                    if abs(ctx.imu.tilt()[0]) < 6: # If it's not tilted stop moving
+                        break
+                return
+                
+        await robot.turn(20)
+        if await robot.is_seeing_any_black():
+            await robot.turn(-20)
+            return
+        await robot.turn(-20)
+        
 
-        await robot.straight(70) # Drive straight to check wether its a ramp
-        if not abs(ctx.imu.tilt()[0]) > 6: # If it's not tilted, run room3
-            await room3(robot, ctx)
-        else:
-            await robot.straight(-30)
-
+        await room3(robot, ctx)
+                
 async def align_wall_distance_if_reasonable(robot: LineFollowerRobot, distance, n = -2):
     # Generic wall-distance alignment helper, called from many positions inside the room -
     # no fixed spot to diagram here (see call sites for position context).
@@ -176,7 +197,7 @@ async def straight_back_untill_black_or_wall_and_mark(n, robot: LineFollowerRobo
             if triangle_detected:
                 triangle = True 
                 print("Triangle!")
-                await robot.straight(20)
+                await robot.straight(50)
                 await robot.turn(start_heading - robot.ctx.imu.heading())
                 await robot.ctx.speaker.beep()
                 await robot.ctx.wait(0.2)
@@ -330,7 +351,35 @@ async def room3_mid_sector(robot: LineFollowerRobot, data: Room3info):
     await robot.garraDown()
     await robot.straight(-data.U)
     await robot.turn(3)
-    await straight_back_untill_black_or_wall_and_mark(5, robot, data, do_triangle=False)
+    #await straight_back_untill_black_or_wall_and_mark(5, robot, data) #,do_triangle=False) #############################################################
+    
+    await robot.ctx.wait(0.2)
+    start_angle = robot.ctx.imu.heading()
+    
+    start_dist = robot.drive_base.distance()###################################################################
+    while True:
+        error = start_angle - robot.ctx.imu.heading()
+        robot.drive(-400, error * 16)
+        if abs(robot.drive_base.distance() - start_dist) > data.U * 4:
+            break
+        if await robot.is_seeing_any_black():
+            data.markOutput(5)
+            robot.brake()
+            await robot.garraUp()
+
+            await robot.straight(data.U)
+            await beep_n(robot, 3)
+            break
+        if abs(error) > 6:
+            robot.brake()
+            robot.brake()
+            await beep_n(robot, 2)
+            await robot.garraUp()
+            await robot.straight(300)
+            await robot.turn(error * 2)
+            robot.straight(300)
+
+    robot.brake()
 
     await robot.garraUp()
 
@@ -346,6 +395,7 @@ async def room3_mid_sector(robot: LineFollowerRobot, data: Room3info):
     await align_wall_distance_if_reasonable(robot, data.U * 1.53)
     await robot.curve(-80, -100)
     await data.testOutputIfMissing(5)
+    await robot.move_time(0.2)
 
     """
                _9_8_7_
@@ -478,11 +528,13 @@ async def room3_high_sector(robot: LineFollowerRobot, data: Room3info):
     """
 
 
-async def test(triangle, robot, output, ctx):
+async def test(triangle, robot: LineFollowerRobot, output, ctx):
     data = Room3info(robot)
     data.markOutput(output)
     data.mark_triangle(triangle)
-    await room3_alignment_and_delivery(robot, data)
+    robot.data = data
+    robot.use_gyro(True)
+    await aligned_on_triangle_deliver(robot, data)
     await room3_exit_maneuver(robot, ctx, data)
 
 async def room3_alignment_and_delivery(robot: LineFollowerRobot, data: Room3info):
@@ -494,18 +546,15 @@ async def room3_alignment_and_delivery(robot: LineFollowerRobot, data: Room3info
         triangle_turn_offset = 180
         await robot.straight(data.U * 2)
         await align_at_wall_if_close(robot, 5, reposition=False)
-        await robot.garraDown()
         await robot.straight(data.U * -1.3)
         await align_wall_distance_if_reasonable(robot, data.U * 1.6, n = 5)
     else:
         await robot.turn(-90)
         await robot.straight(data.U * 1)
         await align_at_wall_if_close(robot, 11, reposition=False)
-        await robot.garraDown()
         await robot.straight(data.U * -1.3)
         await align_wall_distance_if_reasonable(robot, data.U * 1.6, n = 11)
 
-    await robot.garraUp()
 
     """
                _9_8_7_
@@ -532,6 +581,7 @@ async def room3_alignment_and_delivery(robot: LineFollowerRobot, data: Room3info
            12 |_/___\_| 4
                 1 2 3
     """
+async def aligned_on_triangle_deliver(robot: LineFollowerRobot, data: Room3info):
 
     triangles_aligned = (
         (data.triangle1 in ["0-1", "6-7"] and data.triangle2 in ["0-1", "6-7"])
@@ -539,24 +589,25 @@ async def room3_alignment_and_delivery(robot: LineFollowerRobot, data: Room3info
     )
 
     await robot.garraDown()
-    await robot.straight(-2 * data.U)
+    await robot.move_time(2, -500)
     await robot.garraUp()
     await robot.turn(180)
 
     await robot.garraDown()
 
     if triangles_aligned:
-        await robot.straight(-3 * data.U)
+        await robot.move_time(3, -500)
         await robot.garraUp()
         await robot.garraDown()
         await robot.straight(2 * data.U)
 
-    await robot.straight(1.5 * data.U,  speed = 600)
+    await robot.move_time(2)
     await robot.straight(-data.U * 0.3, speed = 600)
     await robot.garraUp()
     await robot.garraDown()
     robot.drive_base.use_gyro(False)
-    await robot.straight(0.6 * data.U, speed=600)
+    await robot.move_time(0.6)
+
     robot.drive_base.use_gyro(True)
     await robot.straight(-data.U * 0.5)
 
@@ -585,7 +636,6 @@ async def room3_exit_maneuver(robot: LineFollowerRobot, ctx: Context, data: Room
            12 |_______| 4
                 1 2 3
     """
-
     # Move based on output location
     if data.output in [12, 4]:
         await robot.straight(-data.U * 1.3)
@@ -599,7 +649,6 @@ async def room3_exit_maneuver(robot: LineFollowerRobot, ctx: Context, data: Room
            12 |___C___| 4   at C if output 12, 4
                 1 2 3
     """
-
     # Turn based on output
     if data.output in [4, 5, 6, 3, 7]:
         await robot.turn(90)                 # Facing ---->
@@ -607,8 +656,6 @@ async def room3_exit_maneuver(robot: LineFollowerRobot, ctx: Context, data: Room
         await robot.turn(-90)
     if data.output in [2]:    # Facing V
         await robot.turn(180)
-
-
 
     """
                _9_X_7_
@@ -657,21 +704,19 @@ async def room3_exit_maneuver(robot: LineFollowerRobot, ctx: Context, data: Room
             start_angle = ctx.imu.heading()
 
     robot.brake()
-    await robot.straight(-50)
-    await robot.alignOnLinePerTime(3)
-    await robot.straight(80)
-    await robot.turn(-30)
-    robot.turn(120)
-    while not robot.drive_base.done():
-        if await robot.L_sensor.reflection() < 30:
-            break
+    robot.use_gyro(True)
+    await robot.straight(-40)
+    await robot.alignOnLinePerTime(2)
+    await robot.straight(-100)
+    await robot.turn(90)
+    await align_wall_distance_if_reasonable(robot, data.U * 1.55, n = 11) #<---------------------------------------
+    await robot.turn(-90)
+    await robot.straight(180)
 
     robot.brake()
-    robot.turn(-20)
+    await robot.turn(-20)
+    await robot.align_on_line_thingie(robot.R_sensor, robot.L_sensor, 1)
 
-    while not robot.drive_base.done():
-        if await robot.L_sensor.reflection() > 30:
-            break
 
     robot.brake()
 
@@ -705,6 +750,7 @@ async def room3(robot: LineFollowerRobot, ctx: Context):
     await room3_mid_sector(robot, data)
     await room3_high_sector(robot, data)
     await room3_alignment_and_delivery(robot, data)
+    await aligned_on_triangle_deliver(robot, data)
     await room3_exit_maneuver(robot, ctx, data)
 
     robot.clear_modified_straigth_speed()

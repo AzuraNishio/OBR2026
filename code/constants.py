@@ -11,12 +11,16 @@ class line_follower_constants:
 
     # Constants for the gap check maneuver in mm
     gap_check_distance = 250
+    do_gap_save = False
+
+    do_knock_down_save = False
 
     # Minimum value for the silver detection in %
     silver_min_threshold = 95
 
     # Side to go around the obstacle, -1 for left, 1 for right
     obstacle_side = 1
+    do_obstacle = False
 
     # PD controller coefficients
     KP = 4.0

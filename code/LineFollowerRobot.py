@@ -56,7 +56,7 @@ class LineFollowerRobot:
                     ctx.indicate_port(e.port)
                 elif ctx.time() - self.animTime < 2:
                     if e.found == "Nothing / Unknown":
-                        ctx.show_string_encoded_img(
+                        ctx.show_string_enxcoded_img(
                             """ 9...9
                                 .9.9.
                                 ..9..
@@ -112,14 +112,54 @@ class LineFollowerRobot:
 
         self.drivingFor = 0;
         self.shouldClear = False;
-        self.default_straight_speed = self.drive_base.settings()[0]
+        self.default_straight_speed = 250
         self.modified_straight_speed = None
     
     def set_modified_straight_speed(self, speed):
         self.modified_straight_speed = speed
 
     async def is_seeing_any_black(self):
-        return await self.R_sensor.reflection() < 30 or await self.R_sensor.reflection() < 30
+        return await self.R_sensor.reflection() < 30 or await self.L_sensor.reflection() < 30
+
+    async def black_dir(self):
+        return (1 if await self.R_sensor.reflection() < 30 else 0) - (1 if await self.L_sensor.reflection() < 30 else 0)
+
+    async def align_on_line_thingie(self, pro_line_sensor, retro_line_sensor, side):
+        self
+
+        skip = False
+        flip = False
+        start_angle = self.ctx.imu.heading()
+        while True and not skip:  # Loop until skip
+            self.drive_base.drive(0, side * 140)  # Just turn in the direction of the line
+            if await pro_line_sensor.reflection() < 21:
+                while True:
+                    self.drive_base.drive(0, side * 40)
+
+                    if await pro_line_sensor.reflection() > 21:
+                        if await retro_line_sensor.reflection() > 21:
+                            skip = True
+                            break
+                        else:
+                            self.drive_base.curve(0, side * -4)
+            elif await retro_line_sensor.reflection() < 21:
+                while True:
+                    self.drive_base.drive(0, side * -40)
+
+                    if await retro_line_sensor.reflection() > 21:
+                        if await pro_line_sensor.reflection() > 21:
+                            skip = True
+                            break
+                        else:
+                            self.drive_base.curve(0, side * 4)
+
+            if abs(self.ctx.imu.heading() - start_angle) > 50:
+                flip = True
+                await self.drive_base.turn(side * -40)
+                break
+
+        if flip:
+            await self._green_turn_until_line(retro_line_sensor, pro_line_sensor, -side)
 
     def clear_modified_straigth_speed(self):
         self.modified_straight_speed = None
@@ -183,8 +223,15 @@ class LineFollowerRobot:
             if distance >= ultrasonic_more_than:
                 break
         self.drive_base.brake()
-        
 
+    async def move_time(self, time, speed = 500):
+        w = self.ctx.get_waiter(time)
+        while True:
+            self.drive_base.drive(speed, 0)
+            if w:
+                break
+        self.drive_base.brake()
+    
     async def alignOnLinePerTime(self, time = 3, black_threshold = 30, k = 6, speedK = 6, doPreAlign = True):
         ctx = self.ctx
         self.drive_base.use_gyro(False)

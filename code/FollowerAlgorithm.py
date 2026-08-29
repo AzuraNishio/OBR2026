@@ -45,6 +45,7 @@ class FollowerAlgorithm:
         self.lastCheck = 0
         self.last_error = 0
         self.last_derivative = 0
+        self.garra_was_down = False
 
         #robot.drive_base.use_gyro(True)
 
@@ -78,15 +79,15 @@ class FollowerAlgorithm:
 
         self.update_green_counters(dT, R_green, L_green)
 
-        await self.handle_claw_tilt()
+        if line_follower_constants.do_knock_down_save:await self.handle_claw_tilt()
 
         # Distance-based gap detection (replaces the old cruise-mode gap detection)
-        await self.handle_gap_detection()
+        if line_follower_constants.do_gap_save: await self.handle_gap_detection()
 
         if R_reflection < 50 or L_reflection < 50:
             self.lastCheck = robot.drive_base.distance()
 
-        await self.handle_obstacle_avoidance()
+        if line_follower_constants.do_obstacle: self.handle_obstacle_avoidance()
 
         if darkest > line_follower_constants.silver_min_threshold:
             await room3check(robot, self.ctx)
@@ -134,9 +135,18 @@ class FollowerAlgorithm:
         robot = self.robot
 
         if abs(ctx.imu.tilt()[0]) > 27:
-            robot.garra_motor.run_time(5000, 1000)
-            await robot.drive_base.straight(70)
+            if not self.garra_was_down:
+                self.garra_down_time = ctx.time()
+            self.garra_was_down = True
+
+            if not abs(ctx.time() - self.garra_down_time) > 2:
+                robot.garra_motor.run_time(5000, 1000)
+                await robot.drive_base.straight(70)
+            else:
+                await robot.garra_motor.run_time(-200, 1000)
+                await robot.drive_base.straight(70)
         else:
+            self.garra_was_down = False
             robot.garra_motor.run_time(-200, 1000)
 
     # endregion
@@ -158,9 +168,23 @@ class FollowerAlgorithm:
 
         if not isLine:
             await robot.drive_base.curve(40, -10)
-            await robot.drive_base.straight(-10 - line_follower_constants.gap_check_distance)
-            await robot.drive_base.curve(40, -60)
-            await robot.driveUntillConditions(-70, 0, L_reflection_less_than=40)
+            for i in range(4):
+                start_dist = robot.drive_base.distance()
+                while True:
+                    robot.drive(-500, 0)
+                    if abs(robot.drive_base.distance() - start_dist) > (10 + line_follower_constants.gap_check_distance) / 4:
+                        break
+                    if await robot.is_seeing_any_black():
+                        break
+
+                await robot.turn(-20)
+                bb = await robot.is_seeing_any_black()
+                await robot.turn(20)
+                if bb: break
+            await robot.turn(await robot.black_dir() * 6)
+            await robot.straight(-60)
+
+            
         else:
             await robot.drive_base.curve(0, -20)
 
@@ -242,7 +266,9 @@ class FollowerAlgorithm:
         await robot.drive_base.straight(70)
 
         if side == 0:  # If 180 them turn 170
-            await robot.drive_base.curve(0, -170)
+            await robot.drive_base.curve(0, -90)
+            await robot.straight(15)
+            await robot.drive_base.curve(0, -80)
             side = -1  # Sets side to 1 so turn till line works
         else:  # Else turn 80 in the direction
             await robot.drive_base.curve(0, 60 * side)
@@ -258,7 +284,8 @@ class FollowerAlgorithm:
         robot = self.robot
 
         skip = False
-
+        flip = False
+        start_angle = self.ctx.imu.heading()
         while True and not skip:  # Loop until skip
             robot.drive_base.drive(0, side * 140)  # Just turn in the direction of the line
             if await pro_line_sensor.reflection() < 21:
@@ -281,6 +308,14 @@ class FollowerAlgorithm:
                             break
                         else:
                             robot.drive_base.curve(0, side * 4)
+
+            if abs(self.ctx.imu.heading() - start_angle) > 50:
+                flip = True
+                await robot.drive_base.turn(side * -40)
+                break
+
+        if flip:
+            await self._green_turn_until_line(retro_line_sensor, pro_line_sensor, -side)
 
     # endregion
 
