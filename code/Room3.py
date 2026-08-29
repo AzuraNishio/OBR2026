@@ -142,6 +142,7 @@ async def align_wall_distance_if_reasonable(robot: LineFollowerRobot, distance, 
 async def straight_back_untill_black_or_wall_and_mark(n, robot: LineFollowerRobot, data: Room3info, do_triangle = True):
     # Generic backward-drive-until-wall/line/triangle helper, reused from several
     # sectors with output id `n` - see each call site's diagram for the position context.
+    print(f"Straight to wall {n} and checking!")
     base = robot.drive_base
     start_dist = base.distance()
     await robot.straight(-40)
@@ -257,29 +258,30 @@ async def align_at_wall_or_black_if_close(robot: LineFollowerRobot, wall = None,
         await robot.alignOnLinePerTime(3)
 
 async def room3_entrance_and_low_sector(robot: LineFollowerRobot, data: Room3info):
-    """Handle low sector (entrance and sectors 0-1, 4, 12).
+    print(""" LOW-1
+    Handle low sector (entrance and sectors 0-1, 4, 12).
                _9_8_7_
            10 |       | 6
            11 |_ _ _ _| 5
            12 |__low__| 4
                 1 2 3
-    """
-    await robot.turn(-10)
+    """)
+    await robot.turn(10)
 
     await robot.straight(data.U * 0.6)
     start_angle = robot.ctx.imu.heading()
     start_time  = robot.ctx.time()
-    await robot.turn(105)
+    await robot.turn(85)
 
 
 
-    """
+    print(""" LOW-2
                _9_8_7_
            10 |       | 6
            11 |_ _ _ _| 5
            12 |__low__| 4   o robot after entering + turning 95, about to test wall 4
                 1 2 3
-    """
+    """)
 
     await align_at_wall_if_close(robot, 4)
     await data.testOutputIfMissing(4)
@@ -287,13 +289,13 @@ async def room3_entrance_and_low_sector(robot: LineFollowerRobot, data: Room3inf
     await robot.straight(50)
     await robot.garraDown()
 
-    """
+    print(""" LOW-3
                _9_8_7_
            10 |       | 6
            11 |_ _ _ _| 5
            12 |_>_low_| 4   > robot moved off wall 4, garra down, heading back to test entrance
                 1 2 3
-    """
+    """)
 
     # Passing on low sector, testing entrance and testing out 4
     input_distance_from_left_wall, triangle = await straight_back_untill_black_or_wall_and_mark(12, robot, data)
@@ -306,13 +308,13 @@ async def room3_entrance_and_low_sector(robot: LineFollowerRobot, data: Room3inf
 
     data.markInput(int(1 + floor(0.1 + (input_distance_from_left_wall / data.U))))
 
-    """
+    print(""" LOW-4
                _9_8_7_
            10 |       | 6
            11 |_ _ _ _| 5
            12 |<__low_| 4   < robot backed up along low sector, input marked, near wall 12/entrance
                 1 2 3
-    """
+    """)
 
     # Turn and move to mid sector. Contour triangle if it's there
     if not triangle:
@@ -337,22 +339,23 @@ async def room3_entrance_and_low_sector(robot: LineFollowerRobot, data: Room3inf
 
     await align_at_wall_if_close(robot, 11, reposition=False, max_dist = 600)
 
-    """
+    print(""" LOW-5
                _9_8_7_
            10 |       | 6
            11 |<=     | 5
            12 |_______| 4   ^ robot at end of low sector, facing wall 11, ready for mid sector
                 1 2 3
-    """
+    """)
 
 async def room3_mid_sector(robot: LineFollowerRobot, data: Room3info):
-    """Handle mid sector (sectors 5 and 11).
+    print(""" MID-1
+    Handle mid sector (sectors 5 and 11).
                _9_8_7_
            10 |       | 6
            11 |<=     | 5
            12 |_______| 4   <= robot with garra facing right
                 1 2 3
-    """
+    """)
 
     await robot.garraDown()
     await robot.straight(-data.U)
@@ -392,13 +395,13 @@ async def room3_mid_sector(robot: LineFollowerRobot, data: Room3info):
 
     await robot.garraUp()
 
-    """
+    print(""" MID-2
                _9_8_7_
            10 |       | 6
            11 |=>     | 5   => robot crossed sector 11, garra up, heading right toward 5
            12 |_______| 4
                 1 2 3
-    """
+    """)
 
     await robot.curve(-80, -90)
     await align_wall_distance_if_reasonable(robot, data.U * 1.53)
@@ -406,48 +409,48 @@ async def room3_mid_sector(robot: LineFollowerRobot, data: Room3info):
     await data.testOutputIfMissing(5)
     await robot.move_time(0.2)
 
-    """
+    print(""" MID-3
                _9_8_7_
            10 |       | 6
            11 |     ^ | 5   ^ robot curved up to wall 5, testing output
            12 |_______| 4
                 1 2 3
-    """
+    """)
 
     await align_at_wall_if_close(robot, 5, reposition=False)
     await robot.garraDown()
     await straight_back_untill_black_or_wall_and_mark(11, robot, data)
     await robot.garraUp()
 
-    """
+    print(""" MID-4
                _9_8_7_
            10 |       | 6
            11 |     <=| 5   <= robot crossing back across sector 5 toward 11
            12 |_______| 4
                 1 2 3
-    """
+    """)
 
     await robot.straight(-data.U * -1)
     await align_wall_distance_if_reasonable(robot, data.U * 1.3, n=5)
     # At this moment the robot should be at the exactly middle!
-    """
+    print(""" MID-5
                _9_8_7_
            10 |       | 6
            11 |  =>   | 5
            12 |_______| 4   <= robot with garra facing left
                 1 2 3
-    """
+    """)
 
 
 async def room3_high_sector(robot: LineFollowerRobot, data: Room3info):
-    """Handle high sector (sectors 2, 6-7, 8, 9-10)."""
-    """
+    print(""" HIG-1
+    Handle high sector (sectors 2, 6-7, 8, 9-10).
                _9_8_7_
            10 |       | 6
            11 |   ^   | 5   ^ robot at middle, about to turn up into high sector
            12 |_______| 4
                 1 2 3
-    """
+    """)
     # Moving to high sector
     await robot.garraUp()
 
@@ -466,13 +469,13 @@ async def room3_high_sector(robot: LineFollowerRobot, data: Room3info):
     await robot.straight(-60)
     await robot.turn(90)
 
-    """
+    print(""" HIG-2
                _9_8_7_
            10 |  <=   | 6
            11 |       | 5
            12 |_______| 4   <= robot with garra facing right
                 1 2 3
-    """
+    """)
 
     # High sector
     await robot.straight(60)
@@ -493,13 +496,13 @@ async def room3_high_sector(robot: LineFollowerRobot, data: Room3info):
 
     await align_at_wall_if_close(robot, 4)
 
-    """
+    print(""" HIG-3
                _9_8_7_
            10 |     =>| 6
            11 |       | 5
            12 |_______| 4   => robot with garra facing left
                 1 2 3
-    """
+    """)
 
     await robot.garraDown()
     a, triangle = await straight_back_untill_black_or_wall_and_mark(10, robot, data)
@@ -511,13 +514,13 @@ async def room3_high_sector(robot: LineFollowerRobot, data: Room3info):
 
     await robot.turn(-90)
 
-    """
+    print(""" HIG-4
                _9_8_7_
            10 |^      | 6
            11 |       | 5
            12 |_______| 4   ^ robot with garra facing down
                 1 2 3
-    """
+    """)
 
     if not triangle:  # Only test 9 if there's not a triangle at 9-10 sector
         await data.testOutputIfMissing(9)
@@ -527,13 +530,13 @@ async def room3_high_sector(robot: LineFollowerRobot, data: Room3info):
     await align_wall_distance_if_reasonable(robot, data.U * 1.3, n=9)
     await robot.garraUp()
 
-    """
+    print(""" HIG-5
                _9_8_7_
            10 |       | 6   ^ robot finished high sector sweep, garra down, facing up
            11 |^      | 5
            12 |_______| 4
                 1 2 3
-    """
+    """)
 
 
 async def test(triangle, robot: LineFollowerRobot, output, ctx):
@@ -564,15 +567,16 @@ async def room3_alignment_and_delivery(robot: LineFollowerRobot, data: Room3info
         await align_wall_distance_if_reasonable(robot, data.U * 1.6, n = 11)
 
 
-    """
+    print("""
                _9_8_7_
            10 |       | 6   if output at 5 facing <-----
            11 |   O   | 5   else  facing   -----> and triangle_turn_offset = 180
            12 |_______| 4   ^ robot with garra facing down
                 1 2 3
-    """
+    """)
 
     # Align based on triangle position
+    print(f"Delivering at {data.triangle1}!")
     if data.triangle1 == "6-7":
         await robot.turn(-45 + triangle_turn_offset)
     elif data.triangle1 == "0-1":
@@ -582,13 +586,13 @@ async def room3_alignment_and_delivery(robot: LineFollowerRobot, data: Room3info
     else: # If none do 9-10
         await robot.turn(-90 - 45 + triangle_turn_offset)
 
-    r"""
+    print("""
                _9_8_7_
            10 | \   / | 6
            11 |   *   | 5   * robot rotated to face the marked triangle corner
            12 |_/___\_| 4
                 1 2 3
-    """
+    """)
 async def aligned_on_triangle_deliver(robot: LineFollowerRobot, data: Room3info):
 
     triangles_aligned = (
@@ -637,26 +641,26 @@ async def room3_exit_maneuver(robot: LineFollowerRobot, ctx: Context, data: Room
     else:  # If none do 9-10
         await robot.turn(45)
 
-    """
+    print("""
                _9_8_7_
            10 |       | 6
            11 |   V   | 5   V robot after delivery sequence, garra up, back at center
            12 |_______| 4
                 1 2 3
-    """
+    """)
     # Move based on output location
     if data.output in [12, 4]:
         await robot.straight(-data.U * 1.3)
     if data.output in [10, 6]:
         await robot.straight(data.U * 1.3)
 
-    """
+    print("""
                _9_8_7_
            10 |   A   | 6   at A if output 10, 6
            11 |   B   | 5   at B if other
            12 |___C___| 4   at C if output 12, 4
                 1 2 3
-    """
+    """)
     # Turn based on output
     if data.output in [4, 5, 6, 3, 7]:
         await robot.turn(90)                 # Facing ---->
@@ -665,37 +669,37 @@ async def room3_exit_maneuver(robot: LineFollowerRobot, ctx: Context, data: Room
     if data.output in [2]:    # Facing V
         await robot.turn(180)
 
-    """
+    print("""
                _9_X_7_
            10X|   -   |X6   
            11X|   -   |X5     
            12X|___-___|X4   
                 1 X 3
-    """
+    """)
 
     # Final positioning ONLY FOR MISSING OUTPUTS
 
     if data.output in [1, 3, 7, 9]:
         await robot.straight(data.U * 1.1)
-        """
+        print("""
                _9_X_7_
            10X|<A   B>|X6  at A if out 9
            11X|       |X5  at B if out 7 
            12X|<D___C>|X4  at C if out 3
                 1 X 3      at D if out 1
-        """
+        """)
         if data.output in [1, 7]:
             await robot.turn(-90)
         if data.output in [3, 9]:
             await robot.turn(90)
 
-    """
+    print("""
                _9_8_7_
            10 |       | 6
            11 |   *   | 5   * robot at chosen output wall, oriented outward, about to search for the line
            12 |_______| 4
                 1 2 3
-    """
+    """)
 
     # Search for line
     await robot.straight(data.U * 0.7)
@@ -720,13 +724,13 @@ async def room3_exit_maneuver(robot: LineFollowerRobot, ctx: Context, data: Room
 
 
 
-    """    Note to myself: FIX EDGE CASES OF In3Out4, In3Out5, In3Out6
+    print("""    Note to myself: FIX EDGE CASES OF In3Out4, In3Out5, In3Out6
                _9_8_7_          distance alignement 
            10 |^> > >V| 6       [1, 4, 7, 10] - 0.55 U
            11 |^  *  V| 5       [2, 5, 8, 11] - 1.55 U
            12 |^<_<_<V| 4       [3, 6, 9, 12] - 2.55 U
                 1 2 3
-    """
+    """)
 
     if   data.output in [1, 4, 7, 10]: center_align_dist = 0.55 * data.U
     elif data.output in [2, 5, 8, 11]: center_align_dist = 1.55 * data.U
@@ -743,23 +747,17 @@ async def room3_exit_maneuver(robot: LineFollowerRobot, ctx: Context, data: Room
 
     robot.brake()
 
-    """
+    print("""
                _9_8_7_
            10 |       | 6
            11 |       | 5
            12 |_______| 4
                 1 2 3   robot has exited room 3 and re-acquired the line outside
-    """
+    """)
 
 
 async def room3(robot: LineFollowerRobot, ctx: Context):
-    """Main room3 orchestrator function.
-               _9_8_7_
-           10 |       | 6
-           11 |       | 5
-           12 |___^___| 4   ^ robot entering room 3 through the low-sector entrance
-                1 2 3
-    """
+
     robot.set_modified_straight_speed(room3_const.straight_speed)
     print("Running room 3!!")
     data = Room3info(robot)
