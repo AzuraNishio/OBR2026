@@ -6,9 +6,9 @@ from pybricks.iodevices import *
 from pybricks.robotics import *
 from pybricks.hubs import *
 from pybricks.pupdevices import *
+import FailHandler
 import sys
 from libs.Utills import *
-from LineFollowerRobot import LineFollowerRobot
 
 class waiter:
     def __init__(self, ctx, duration, inverted = False):
@@ -33,7 +33,7 @@ class Context:
         self.battery = self.hub.battery
         self.cron = StopWatch()
         self.display.off()
-        self.robot: LineFollowerRobot = None
+        self.robot = None
         errorHandler.bindContext(self)
         print("\033[2J\033[H", end="")
         print("\n")
