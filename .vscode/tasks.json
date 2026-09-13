@@ -8,7 +8,7 @@
             "args": [
                 "-NoProfile",
                 "-Command",
-                "$maxRetries = 4; $attempt = 0; while ($attempt -lt $maxRetries) { $attempt++; Write-Host \"=== Attempt $attempt of $maxRetries ===\"; & .venv\\Scripts\\pybricksdev.exe run ble --name GambareYalla code/main.py; if ($LASTEXITCODE -eq 0) { exit 0 } elseif ($attempt -lt $maxRetries) { Write-Host \"Connection failed, retrying in 2 seconds...\"; Start-Sleep -Seconds 2 } }; exit $LASTEXITCODE"
+                "$maxRetries = 4; $attempt = 0; while ($attempt -lt $maxRetries) { $attempt++; Write-Host \"=== Attempt $attempt of $maxRetries ===\"; & .venv\\Scripts\\pybricksdev.exe run ble --name GambareYalla Spike/main.py; if ($LASTEXITCODE -eq 0) { exit 0 } elseif ($attempt -lt $maxRetries) { Write-Host \"Connection failed, retrying in 2 seconds...\"; Start-Sleep -Seconds 2 } }; exit $LASTEXITCODE"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"

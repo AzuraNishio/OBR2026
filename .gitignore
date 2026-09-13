@@ -2,3 +2,6 @@
 /__pycache__
 .vscode/tasks.json
 .vscode/settings.json
+*.pyc
+/code/__pycache__
+code/__pycache__/FailHandler.cpython-313.pyc
