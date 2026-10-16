@@ -18,7 +18,7 @@ from uselect import poll
 import Room3
 
 def isTest():
-    return True
+    return False
 
 def room3_in_out_img(IN, out):
         s = """
@@ -37,10 +37,8 @@ def room3_in_out_img(IN, out):
 
 async def test_suite(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):
     #!/usr/bin/env pybricks-micropython
-    from pybricks.hubs import EV3Brick
     from pybricks.iodevices import UARTDevice
     from pybricks.parameters import Port
-    from pybricks.media.ev3dev import SoundFile
 
     # Initialize the EV3
     hub = ctx.hub
