@@ -2,7 +2,7 @@ from pybricks.pupdevices import Motor, ColorSensor, UltrasonicSensor
 from pybricks.parameters import Port
 from pybricks.tools import *
 from umath import *
-
+from ESP32_bridge import GenericDistanceSensor
 from libs.AzSensors import AzColorSensor
 
 tau = pi + pi
@@ -20,7 +20,7 @@ def connect_port_device(port: Port):
         pass
 
     try:
-        return ("Ultrasonic Sensor", UltrasonicSensor(port))
+        return ("Ultrasonic Sensor", GenericDistanceSensor(port))
     except:
         pass
 

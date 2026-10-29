@@ -65,8 +65,9 @@ def main():
     
     run_task(main_task())
 
-try:
-    main()
-except Exception as e:
-    ctx.speaker.beep(100, 1500)
-    ctx.throw(e)
+def init():
+    try:
+        main()
+    except Exception as e:
+        ctx.speaker.beep(100, 1500)
+        ctx.throw(e)

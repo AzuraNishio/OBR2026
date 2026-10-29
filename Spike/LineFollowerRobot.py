@@ -44,7 +44,7 @@ class LineFollowerRobot:
                 self.garra_motor:Motor = ctx.get_port_of_type(garra_motor, Motor)
                 self.R_sensor:ColorSensor = ctx.get_port_of_type(R_sensor_port, ColorSensor)
                 self.L_sensor:ColorSensor = ctx.get_port_of_type(L_sensor_port, ColorSensor)
-                self.distance_sensor:UltrasonicSensor = ctx.get_port_of_type(ultrasonic_sensor, UltrasonicSensor)
+                self.distance_sensor:GenericDistanceSensor = ctx.get_port_of_type(ultrasonic_sensor, UltrasonicSensor)
                 self.distance_sensor.lights.off()
                 break
             except WrongPortError as e:
