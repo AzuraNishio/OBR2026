@@ -4,8 +4,6 @@ from pybricks.parameters import Port
 from umath import *
 from pybricks.pupdevices import Motor, ColorSensor, UltrasonicSensor
 
-hub = PrimeHub()
-
 
 
 ALT_FLAG      = 0xA0;
@@ -40,9 +38,9 @@ class ESP32_bridge:
         self.packet_buffer[(self.active_packet + 1) % 8] = []
         self._avaiable = True
 
-    def tick_packet_receiver(self):
+    async def tick_packet_receiver(self):
         while self.device.waiting():
-            byte = self.device.read(1)[0]
+            byte = (await self.device.read(1))[0]
             if self.is_alted:
                 self._write_to_packet_buffer(self.unalt_map.get(byte, 0x00))
                 self.is_alted = False
@@ -70,9 +68,16 @@ class ESP32_distance_sensor(ESP32_bridge):
         super().__init__(port)
 
     async def distance(self):
+        await self.tick_packet_receiver()
+        print(self.packet_buffer)
+        if len(self.get_packet()) == 0: return 999
+        return (self.get_packet()[0] | (self.get_packet()[1] << 8))
+
+    def sinc_distance(self):
         self.tick_packet_receiver()
-        if len(self.get_packet()) == 0: return None
-        return self.get_packet()[0] | (self.get_packet()[1] << 8)
+        print(self.packet_buffer)
+        if len(self.get_packet()) == 0: return 999
+        return (self.get_packet()[0] | (self.get_packet()[1] << 8))
 
 # TODO: prevent eternal pulling and buffer buildup. Make a bg process
 class GenericDistanceSensor:
@@ -86,12 +91,16 @@ class GenericDistanceSensor:
                 self.sensor = ESP32_distance_sensor(port)
 
     async def distance(self):
-        return await self.sensor.distance()
+        return await self.sensor.distance() 
+
+
+    def distance_sinc(self):
+        return self.sensor.sinc_distance()
 
 
 def init():
-    dist_sensor = ESP32_distance_sensor(Port.B)
+    dist_sensor = GenericDistanceSensor(Port.F)
     while True:
         for i in range(1):
-            print(f"{(dist_sensor.distance() or 0) / 10:.0f}")
+            print(f"{(dist_sensor.distance_sinc() or 0) / 10:.0f}")
 

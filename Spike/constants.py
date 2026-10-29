@@ -43,4 +43,4 @@ class room3_const:
 
 class surprises:
     signal_on_obstacle = False
-    signal_on_room3 = True
+    signal_on_room3 = False
