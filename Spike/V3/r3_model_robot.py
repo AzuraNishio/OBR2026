@@ -1,5 +1,5 @@
 from V3.obrExperimentalData import *
-import V3.NekoMath as nk
+import V3.NekoMath
 
 class r3_model_robot:
     def __init__(self, room):
@@ -46,7 +46,7 @@ class r3_model_robot:
     def forward(self):
         """Move one cell. Returns False if blocked (wall/obstacle)."""
         self._pay("move")
-        dx, dy = nk.STEP_TUPLE_FROM_DIR[self._dir]
+        dx, dy = V3.NekoMath.STEP_TUPLE_FROM_DIR[self._dir]
         self.last_dir = (dx, dy)
         nx, ny = self.x + dx, self.y + dy
         k = self._room.kind(nx + self._room.offset, ny)
@@ -62,7 +62,7 @@ class r3_model_robot:
     def backyard(self):
         """Move one cell back. Returns False if blocked (wall/obstacle)."""
         self._pay("move")
-        dx, dy = nk.STEP_TUPLE_FROM_DIR[self._dir]
+        dx, dy = V3.NekoMath.STEP_TUPLE_FROM_DIR[self._dir]
         self.last_dir = (-dx, -dy)
         nx, ny = self.x - dx, self.y - dy
         k = self._room.kind(nx + self._room.offset, ny)

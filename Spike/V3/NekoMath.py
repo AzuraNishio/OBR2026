@@ -2,9 +2,8 @@
 Azura's dependencie free math toolbox! 
 """
 
-import umath as math
-from collections.abc import Iterable
-import os
+import umath
+
 
 # ===================[ Pretty visual stuff ]===================
 grayscale_map = " .,-~+>=ixH#$▒▓█"
@@ -66,7 +65,7 @@ def print_probabilitie_grid(grid: list, do_outline = True, print = True, square 
 
 def clear_terminal():
     # 'nt' means Windows, otherwise it assumes Linux/macOS
-    os.system('cls' if os.name == 'nt' else 'clear')
+    pass #os.system('cls' if os.name == 'nt' else 'clear')
 # ===================[ Grid direction stuff ]===================
 
 STEP_TUPLE_FROM_DIR = [(0, 1), (1, 0), (0, -1), (-1, 0)]
@@ -90,7 +89,7 @@ class Counter(dict):
     #   http://code.activestate.com/recipes/259174/
     #   Knuth, TAOCP Vol. II section 4.6.3
 
-    def __init__(self, iterable=None, /, **kwds):
+    def __init__(self, iterable=None, **kwds):
         super().__init__()
         if iterable is not None:
             self.update(iterable)
@@ -124,7 +123,7 @@ class Counter(dict):
                 return v
 
     def least_not(self, no):
-        m = 999999999999
+        m = 999999
         r = None
         for v in self.keys():
             if self[v] < m and v not in no:
@@ -147,31 +146,31 @@ class Counter(dict):
 
 
 def grid_max(g):
-    if not isinstance(g, Iterable) or isinstance(g, (str, bytes)):
+    if not isinstance(g, list) or isinstance(g, (str, bytes)):
         return g
 
     return max(grid_max(x) for x in g)
 
 def grid_sum(g):
-    if not isinstance(g, Iterable) or isinstance(g, (str, bytes)):
+    if not isinstance(g, list) or isinstance(g, (str, bytes)):
         return g
 
     return sum(grid_sum(x) for x in g)
 
 def grid_mul(g, v):
-    if not isinstance(g, Iterable) or isinstance(g, (str, bytes)):
+    if not isinstance(g, list) or isinstance(g, (str, bytes)):
         return g * v
 
     return [grid_mul(x, v) for x in g]
 
 def grid_pow(g, v):
-    if not isinstance(g, Iterable) or isinstance(g, (str, bytes)):
+    if not isinstance(g, list) or isinstance(g, (str, bytes)):
         return pow(g, v)
 
     return [grid_pow(x, v) for x in g]
 
 def for_all_grid(g, f, co = None, depth = None):
-    if not isinstance(g, Iterable) or isinstance(g, (str, bytes)) or depth == 0:
+    if not isinstance(g, list) or isinstance(g, (str, bytes)) or depth == 0:
             if co is None: return f(g)
             else: return f(g, co)
     
@@ -235,15 +234,15 @@ def entropy(counts):
     return -sum(c / n * log2(c / n) for c in counts if c)
 
 # ===================[ Math wrappers ]===================
-e = math.e
+e = umath.e
 def pow(a, b):
-    return math.pow(a, b)
+    return umath.pow(a, b)
 
 def exp(p):
     return pow(e, p)
 
 def log2(x):
-    return math.log2(x)
+    return umath.log2(x)
 
 def sigmoid(v, decay = 1):
     return 1 / (1 + exp(-v * decay))
@@ -251,3 +250,6 @@ def sigmoid(v, decay = 1):
 def saturate(x, scale):
     x = max(x, 0)
     return 1 - exp(-x / scale)
+
+def floor(v):
+    return umath.floor(v)

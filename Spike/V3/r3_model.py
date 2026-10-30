@@ -20,8 +20,7 @@ MISCELANEOUS
       4 = beam found nothing solid (it left through a gap)
 """
 
-from dataclasses import dataclass
-import V3.NekoMath as nk
+import V3.NekoMath
 from V3.obrExperimentalData import *
 
 SENSOR_FAR = 4
@@ -32,25 +31,22 @@ SHAPES = {"3x3": (3, 3), "3x4": (3, 4), "4x3": (4, 3)}   # (width, height)
 # --------------------------------------------------------------------------
 # The room: pure data, never changes
 # --------------------------------------------------------------------------
-@dataclass(frozen=True)
+# @dataclass(frozen=True)
 class r3_model:
     shape: str                 # "3x3", "3x4" or "4x3"
     offset: int                # entrance gap = wall number `offset`
     output: int                # exit gap = wall number `output`
     obstacle: tuple = None     # (x, y) or None
-    triangles: frozenset = frozenset()   # set of corner numbers {0,1,2,3}
+    triangles: set = set()   # set of corner numbers {0,1,2,3}
     dist_maps: dict = None
 
-    @property
     def width(self):  return SHAPES[self.shape][0]
-    @property
     def height(self): return SHAPES[self.shape][1]
-    @property
-    def perimeter(self): return 2 * (self.width + self.height)
+    def perimeter(self): return 2 * (self.width() + self.height())
 
     def wall_cell(self, n):
         """Position (outside the room) of wall segment number n."""
-        W, H = self.width, self.height
+        W, H = self.width(), self.height()
         if n < W: return (n, -1)
         n -= W
         if n < H: return (W, n)
@@ -59,12 +55,8 @@ class r3_model:
         n -= W
         return (-1, H - 1 - n)
 
-    @property
     def entrance_cell(self): return self.wall_cell(self.offset)
-    @property
     def exit_cell(self):     return self.wall_cell(self.output)
-
-    @property
     def frequency_score(self):     
         score = 1
         if self.obstacle is None: score *= 1 - probabilitie_of_room3_having_a_obstacle
@@ -74,26 +66,25 @@ class r3_model:
 
         return score
 
-    @property
     def free_area(self):
-        a = self.height * self.width
+        a = self.height() * self.width()
         a -= 2
         if not self.obstacle is None: a -= 1
         return a
 
     def corner_cell(self, c):
-        W, H = self.width, self.height
+        W, H = self.width(), self.height()
         return [(0, 0), (W - 1, 0), (W - 1, H - 1), (0, H - 1)][c]
 
     def inside(self, x, y):
-        return 0 <= x < self.width and 0 <= y < self.height
+        return 0 <= x < self.width() and 0 <= y < self.height()
 
     def kind(self, x, y):
         """What is at (x, y)? 'free' | 'obstacle' | 'entrance' | 'exit' | 'wall'"""
         if self.inside(x, y):
             return "obstacle" if (x, y) == self.obstacle else "free"
-        if (x, y) == self.entrance_cell: return "entrance"
-        if (x, y) == self.exit_cell:     return "exit"
+        if (x, y) == self.entrance_cell(): return "entrance"
+        if (x, y) == self.exit_cell():     return "exit"
         return "wall"
 
     def distance(self, x, y, d):
@@ -117,7 +108,7 @@ class r3_model:
         return n
 
     def render(self, robot=None):
-        W, H = self.width, self.height
+        W, H = self.width(), self.height()
         g = {}
         for y in range(-1, H + 1):
             for x in range(-1, W + 1):
@@ -157,7 +148,7 @@ def compute_distance_map(room: r3_model, target: tuple = None, target2: tuple = 
     Targets can be free cells or entrance/exit gaps.
     """
 
-    W, H = room.width, room.height
+    W, H = room.width(), room.height()
 
     # Initialize every state as unreachable.
     hm = [[ [90, 90, 90, 90] for x in range(W)] for y in range(H)]
@@ -248,8 +239,8 @@ def compute_room_distance_maps(room: r3_model):
     ]
 
     return {
-        "entrance": compute_distance_map(room, room.entrance_cell),
-        "exit": compute_distance_map(room, room.exit_cell),
+        "entrance": compute_distance_map(room, room.entrance_cell()),
+        "exit": compute_distance_map(room, room.exit_cell()),
         "triangle": compute_distance_map(
             room, triangles[0], triangles[1]
         ),
@@ -267,7 +258,7 @@ def all_rooms():
                 if out == off:
                     continue
                 base = r3_model(shape, off, out)
-                gaps = [base.entrance_cell, base.exit_cell]
+                gaps = [base.entrance_cell(), base.exit_cell()]
 
                 def in_front(g):                   # room cell right inside a gap
                     return (min(max(g[0], 0), W - 1), min(max(g[1], 0), H - 1))
@@ -284,7 +275,7 @@ def all_rooms():
                         if any(abs(gx - cx) + abs(gy - cy) == 1 for gx, gy in gaps):
                             continue
                         free_corners.append(c)
-                    for a, b in nk.combinations(free_corners, 2):
+                    for a, b in V3.NekoMath.combinations(free_corners, 2):
                         
                         room = r3_model(shape, off, out, obs, frozenset((a, b)))
 
