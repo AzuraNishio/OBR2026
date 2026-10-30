@@ -1,7 +1,3 @@
-"""
-Azura's dependencie free math toolbox! 
-"""
-
 import umath
 
 

@@ -69,13 +69,11 @@ class ESP32_distance_sensor(ESP32_bridge):
 
     async def distance(self):
         await self.tick_packet_receiver()
-        print(self.packet_buffer)
         if len(self.get_packet()) == 0: return 999
         return (self.get_packet()[0] | (self.get_packet()[1] << 8))
 
     def sinc_distance(self):
         self.tick_packet_receiver()
-        print(self.packet_buffer)
         if len(self.get_packet()) == 0: return 999
         return (self.get_packet()[0] | (self.get_packet()[1] << 8))
 

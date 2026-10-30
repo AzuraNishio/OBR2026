@@ -1,10 +1,9 @@
-import V3.NekoMath
+from V3.NekoMath import *
 import json
 from V3.obrExperimentalData import *
 from V3.r3_model import *
 from V3.r3_model_robot import *
 from V3.r3_robot_interface import *
-import time
 
 FORWARD = 0
 RIGHT = 1
@@ -86,17 +85,17 @@ class r3_info:
         self.update_probability_spread()
 
         def draw_walls(wall_prob):
-            return V3.NekoMath.grayscale_char(wall_prob * wall_prob) * 2
+            return grayscale_char(wall_prob * wall_prob) * 2
 
         # Victim map test
-        canvas = V3.NekoMath.for_all_grid(self.victim_map, draw_walls)
+        canvas = for_all_grid(self.victim_map, draw_walls)
 
         def draw_out(out_prob, canvas):
             if out_prob > 0.25:
                 return "◊◊"
             return canvas
 
-        canvas = V3.NekoMath.for_all_grid(self.out_map, draw_out, canvas)
+        canvas = for_all_grid(self.out_map, draw_out, canvas)
 
         def draw_triangle(out_prob, canvas):
             if out_prob > 0.6:
@@ -105,35 +104,35 @@ class r3_info:
                 return "T" + canvas[0]
             return canvas
 
-        canvas = V3.NekoMath.for_all_grid(self.triangle_map, draw_triangle, canvas)
+        canvas = for_all_grid(self.triangle_map, draw_triangle, canvas)
 
         def draw_obstacle(obstacle_prob, canvas):
             if obstacle_prob > 0.25:
                 return "[]"
             return canvas
 
-        canvas = V3.NekoMath.for_all_grid(self.obstacle_map, draw_obstacle, canvas)
+        canvas = for_all_grid(self.obstacle_map, draw_obstacle, canvas)
 
         canvas[0][4] = "^^"
 
         if not robot is None:
             
-            canvas[robot.y + 1][robot.x + 4] = "/>\\<"[robot.dir] + "\\>/<"[robot.dir]
+            canvas[robot.y + 1][robot.x + 4] = "/>\\<"[robot.dir()] + "\\>/<"[robot.dir()]
 
 
 
 
-        V3.NekoMath.print_grid(canvas)
+        print_grid(canvas)
 
     def pop_from_measurement(self, result, measurement):
         self.rooms = [room for room in self.rooms if measurement(room)  == result]
         self._frequency_score_sum = sum(self.for_all_rooms(lambda room: room.frequency_score))
 
     def measurement_entropy(self, measurement):
-        groups = V3.NekoMath.Counter()
+        groups = Counter()
         for room in self.rooms:
             groups[measurement(room)] += 1
-        return V3.NekoMath.entropy(groups.values())
+        return entropy(groups.values())
 
     def spread_at(self, x, y):
         s = {}
@@ -173,7 +172,7 @@ def action_from_key(key, robot: r3_model_robot, print = False, print_call = prin
         if "+" in key: s = 1
         else: s = -1
 
-        d = V3.NekoMath.straight_move_vec_from_4_state_dir(robot.dir)
+        d = straight_move_vec_from_4_state_dir(robot.dir())
         s += d[0]
         s += d[1]
 
@@ -207,7 +206,7 @@ def measure(rr):
         pp = 0
         d = rr.last_dir
         if room.kind(d[0] + rr.x + room.offset, d[1] + rr.y) in ["obstacle", "wall"]:
-            pp = 1 if V3.NekoMath.straight_move_vec_from_4_state_dir(rr.dir) == rr.last_dir else -1
+            pp = 1 if straight_move_vec_from_4_state_dir(rr.dir) == rr.last_dir else -1
             
         return (rr.measure(room=room), rr.on_triangle(room=room), rr.exited, pp)
     return mm
@@ -246,13 +245,13 @@ def decision_policy_2(real_robot: r3_model_robot, info: r3_info, persistent_data
         time_from_round_beggining = avg_time_before_r3 + robot.time
         time_to_round_end = round_duration - time_from_round_beggining
 
-        potencial_score_after_r3 = avg_score_after_r3 * V3.NekoMath.saturate(time_to_round_end, avg_time_after_r3 * 0.2)
+        potencial_score_after_r3 = avg_score_after_r3 * saturate(time_to_round_end, avg_time_after_r3 * 0.2)
         # potencial_score_after_r3 += 60 * nk.sigmoid(time_to_round_end - avg_time_after_r3, 3)
         expected_score = avg_score_before_r3 + potencial_score_after_r3
-        expected_score_multiplier = V3.NekoMath.pow(score_multiplier_per_victim, delivered_victims)
+        expected_score_multiplier = pow(score_multiplier_per_victim, delivered_victims)
 
         # Note that the -0.05 is here to incentivize delivery!
-        potencial_score_multiplier = V3.NekoMath.pow(score_multiplier_per_victim - 0.05, onboard_victims) if not is_exit else 1
+        potencial_score_multiplier = pow(score_multiplier_per_victim - 0.05, onboard_victims) if not is_exit else 1
 
         true_score = expected_score * expected_score_multiplier * potencial_score_multiplier
         search_score += true_score 
@@ -261,7 +260,7 @@ def decision_policy_2(real_robot: r3_model_robot, info: r3_info, persistent_data
 
         # Abstract score (added to reward certain behaviors)
         # Exit if nothing is left to do
-        search_score += (10 * V3.NekoMath.sigmoid(delivered_victims - 3)) if is_exit else 0
+        search_score += (10 * sigmoid(delivered_victims - 3)) if is_exit else 0
 
         return search_score
 
@@ -320,7 +319,7 @@ def decision_policy_2(real_robot: r3_model_robot, info: r3_info, persistent_data
 class algorithm:
     def __init__(self, robot: r3_robot_interface):
         self.robot = robot
-        V3.NekoMath.clear_terminal()
+        clear_terminal()
 
         info = r3_info()
         info.print_information(robot=robot)
@@ -348,8 +347,8 @@ class algorithm:
         print("=" * 20)
         info.print_information(robot)
         
-        pp = V3.NekoMath.PrettyPrint(box=True)
-        pp + f"Time: {robot.time:.1f}"
+        pp = PrettyPrint(box=True)
+        pp + f"Time: {robot.time():.1f}"
         pp.line_break()
         pp + "Ilustrative room:"
         pp + info.rooms[0].render(robot)
@@ -362,7 +361,6 @@ class algorithm:
         if robot.exited == "exit":
             print("Exited!")
             print(info.rooms[0].render(robot))
-            time.sleep(1)
             return True
         return False
 

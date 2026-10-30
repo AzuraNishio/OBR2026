@@ -90,7 +90,7 @@ class r3_model:
     def distance(self, x, y, d):
         """Walk from (x,y) in direction d. Returns (free_cells, what_stopped_us).
         Gaps are NOT solid: a beam through a gap just keeps going."""
-        dx, dy = nk.STEP_TUPLE_FROM_DIR[d]
+        dx, dy = V3.NekoMath.STEP_TUPLE_FROM_DIR[d]
         n = 0
         while True:
             x += dx; y += dy
@@ -170,7 +170,7 @@ def compute_distance_map(room: r3_model, target: tuple = None, target2: tuple = 
                         continue
 
                     for d in range(4):
-                        dx, dy = nk.STEP_TUPLE_FROM_DIR[d]
+                        dx, dy = V3.NekoMath.STEP_TUPLE_FROM_DIR[d]
 
                         for sign in (1, -1):
                             if (x + sign * dx, y + sign * dy) == (tx, ty):
@@ -186,7 +186,7 @@ def compute_distance_map(room: r3_model, target: tuple = None, target2: tuple = 
                     continue
 
                 for d in range(4):
-                    dx, dy = nk.STEP_TUPLE_FROM_DIR[d]
+                    dx, dy = V3.NekoMath.STEP_TUPLE_FROM_DIR[d]
 
                     # Turn left or right.
                     turn_distance = min(

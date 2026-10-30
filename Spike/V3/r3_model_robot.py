@@ -1,5 +1,5 @@
 from V3.obrExperimentalData import *
-import V3.NekoMath
+from V3.NekoMath import *
 
 class r3_model_robot:
     def __init__(self, room):
@@ -25,16 +25,12 @@ class r3_model_robot:
 
 
     # what a real robot can know: pose in the ENTRANCE frame (starts 0,0,up)
-    @property
     def pose(self):
         return (self.x, self.y, self._dir)
 
     # used by render()/debugging only
-    @property
     def _x(self): return self.x + self._room.offset
-    @property
     def _y(self): return self.y
-    @property
     def dir(self): return self._dir
 
     def turn_right(self): self._turn(+1)
@@ -46,7 +42,7 @@ class r3_model_robot:
     def forward(self):
         """Move one cell. Returns False if blocked (wall/obstacle)."""
         self._pay("move")
-        dx, dy = V3.NekoMath.STEP_TUPLE_FROM_DIR[self._dir]
+        dx, dy = STEP_TUPLE_FROM_DIR[self._dir]
         self.last_dir = (dx, dy)
         nx, ny = self.x + dx, self.y + dy
         k = self._room.kind(nx + self._room.offset, ny)
@@ -62,7 +58,7 @@ class r3_model_robot:
     def backyard(self):
         """Move one cell back. Returns False if blocked (wall/obstacle)."""
         self._pay("move")
-        dx, dy = V3.NekoMath.STEP_TUPLE_FROM_DIR[self._dir]
+        dx, dy = STEP_TUPLE_FROM_DIR[self._dir]
         self.last_dir = (-dx, -dy)
         nx, ny = self.x - dx, self.y - dy
         k = self._room.kind(nx + self._room.offset, ny)

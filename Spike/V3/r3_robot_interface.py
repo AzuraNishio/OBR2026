@@ -1,5 +1,5 @@
 from V3.obrExperimentalData import *
-import V3.NekoMath
+from V3.NekoMath import *
 from LineFollowerRobot import LineFollowerRobot
 from Scaffolding import Context
 from V3.r3_model_robot import *
@@ -9,7 +9,6 @@ class r3_robot_interface:
     def __init__(self, ctx: Context, robot: LineFollowerRobot):
         self.x, self.y, self._dir = 0, 0, 0
         self.exited = None             # None | 'exit' | 'entrance'
-        self.time = 0.0
         self.start_time = ctx.time()
         self.log = []
         self.noclip = False                 # if True, robot can move through walls/obstacles
@@ -21,7 +20,6 @@ class r3_robot_interface:
         self.move_queue = []
         self.is_on_triangle = False
 
-    @property
     def time(self):
         return self.ctx.time()
 
@@ -108,23 +106,19 @@ class r3_robot_interface:
         n.exited          =    self.exited
         n.last_dir        =    self.last_dir
         n.noclip          =    self.noclip
-        n.time            =    self.time
+        n.time            =    self.time()
         n.pushed_on       =    self.pushed_on
         n.log             =    self.log
         return n
 
 
     # what a real robot can know: pose in the ENTRANCE frame (starts 0,0,up)
-    @property
     def pose(self):
         return (self.x, self.y, self._dir)
 
     # used by render()/debugging only
-    @property
     def _x(self): return self.x + self._room.offset
-    @property
     def _y(self): return self.y
-    @property
     def dir(self): return self._dir
 
     def turn_right(self): self._turn(+1)
@@ -139,7 +133,7 @@ class r3_robot_interface:
     def forward(self):
         """Move one cell. Returns False if blocked (wall/obstacle)."""
         self._pay("move")
-        dx, dy = V3.NekoMath.STEP_TUPLE_FROM_DIR[self._dir]
+        dx, dy = STEP_TUPLE_FROM_DIR[self._dir]
         self.last_dir = (dx, dy)
         nx, ny = self.x + dx, self.y + dy
         self.move_queue.append(self.real_move(1))
@@ -151,7 +145,7 @@ class r3_robot_interface:
     def backyard(self):
         """Move one cell back. Returns False if blocked (wall/obstacle)."""
         self._pay("move")
-        dx, dy = V3.NekoMath.STEP_TUPLE_FROM_DIR[self._dir]
+        dx, dy = STEP_TUPLE_FROM_DIR[self._dir]
         self.last_dir = (-dx, -dy)
         nx, ny = self.x - dx, self.y - dy
         self.move_queue.append(self.real_move(-1))
@@ -163,7 +157,7 @@ class r3_robot_interface:
 
     def measure(self, room = None):
         dist = self.real_last_measurement
-        return V3.NekoMath.floor((dist - 80 + 150) / 300)
+        return floor((dist - 80 + 150) / 300)
 
     def kind(self, room=None):
         if room is None: room = self._room
@@ -173,5 +167,4 @@ class r3_robot_interface:
         return self.is_on_triangle
 
     def _pay(self, what):
-        self.time += avg_time_per_action[what]
         self.log.append(what)
