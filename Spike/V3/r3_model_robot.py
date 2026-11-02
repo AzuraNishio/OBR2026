@@ -7,7 +7,6 @@ class r3_model_robot:
         self.x, self.y, self._dir = 0, 0, 0
         self.exited = None             # None | 'exit' | 'entrance'
         self.time = 0.0
-        self.log = []
         self.noclip = False                 # if True, robot can move through walls/obstacles
         self.pushed_on = 0
         self.last_dir = (0, 0)
@@ -45,8 +44,8 @@ class r3_model_robot:
         dx, dy = STEP_TUPLE_FROM_DIR[self._dir]
         self.last_dir = (dx, dy)
         nx, ny = self.x + dx, self.y + dy
-        k = self._room.kind(nx + self._room.offset, ny)
-        if k in ("wall", "obstacle") and not self.noclip:
+        k = "free" if self.noclip else self._room.kind(nx + self._room.offset, ny)
+        if k in ("wall", "obstacle"):
             self.pushed_on = 1
             return False
         self.x, self.y = nx, ny
@@ -61,8 +60,8 @@ class r3_model_robot:
         dx, dy = STEP_TUPLE_FROM_DIR[self._dir]
         self.last_dir = (-dx, -dy)
         nx, ny = self.x - dx, self.y - dy
-        k = self._room.kind(nx + self._room.offset, ny)
-        if k in ("wall", "obstacle") and not self.noclip:
+        k = "free" if self.noclip else self._room.kind(nx + self._room.offset, ny)
+        if k in ("wall", "obstacle"):
             self.pushed_on = -1
             return False
         self.x, self.y = nx, ny
@@ -89,4 +88,3 @@ class r3_model_robot:
 
     def _pay(self, what):
         self.time += avg_time_per_action[what]
-        self.log.append(what)

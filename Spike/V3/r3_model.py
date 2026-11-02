@@ -20,11 +20,28 @@ MISCELANEOUS
       4 = beam found nothing solid (it left through a gap)
 """
 
-import V3.NekoMath
+from V3.NekoMath import *
 from V3.obrExperimentalData import *
 
 SENSOR_FAR = 4
 SHAPES = {"3x3": (3, 3), "3x4": (3, 4), "4x3": (4, 3)}   # (width, height)
+ONLY_OBSTACLE_LESS_ROOMS = True
+OBSTACLE_MASK = 0x000F
+SHAPE_MASK = 0x0030
+OFFSET_MASK = 0x00C0
+OUTPUT_MASK = 0x0F00
+TRIANGLE_MASK = 0x7000
+ROOM_SHAPES = ("3x3", "3x4", "4x3")
+ROOM_SHAPE_IDS = {"3x3": 0, "3x4": 1, "4x3": 2}
+ROOM_TRIANGLE_PAIRS = (
+    (0, 1), (0, 2), (2, 3), None,
+    (1, 2), (1, 3), (0, 3), None,
+)
+ROOM_TRIANGLE_PAIR_CODES = {
+    (0, 1): 0, (0, 2): 1, (2, 3): 2,
+    (1, 2): 4, (1, 3): 5, (0, 3): 6,
+}
+NO_OBSTACLE = (3, 3)
 
 
 
@@ -39,6 +56,13 @@ class r3_model:
     obstacle: tuple = None     # (x, y) or None
     triangles: set = set()   # set of corner numbers {0,1,2,3}
     dist_maps: dict = None
+
+    def __init__(self, shape, offset, output, obstacle=None, triangles=set()):
+        self.shape = shape
+        self.offset = offset
+        self.output = output
+        self.obstacle = obstacle
+        self.triangles = triangles
 
     def width(self):  return SHAPES[self.shape][0]
     def height(self): return SHAPES[self.shape][1]
@@ -90,7 +114,7 @@ class r3_model:
     def distance(self, x, y, d):
         """Walk from (x,y) in direction d. Returns (free_cells, what_stopped_us).
         Gaps are NOT solid: a beam through a gap just keeps going."""
-        dx, dy = V3.NekoMath.STEP_TUPLE_FROM_DIR[d]
+        dx, dy = STEP_TUPLE_FROM_DIR[d]
         n = 0
         while True:
             x += dx; y += dy
@@ -108,6 +132,7 @@ class r3_model:
         return n
 
     def render(self, robot=None):
+        robot._room = self
         W, H = self.width(), self.height()
         g = {}
         for y in range(-1, H + 1):
@@ -118,7 +143,7 @@ class r3_model:
         for c in self.triangles:
             g[self.corner_cell(c)] = "TT"
         if robot is not None:
-            g[(robot._x, robot._y)] = "/>\\<"[robot.dir] + "\\>/<"[robot.dir]
+            g[(robot._x(), robot._y())] = "/>\\<"[robot.dir()] + "\\>/<"[robot.dir()]
         return "\n".join("".join(g[(x, y)] for x in range(-1, W + 1))
                          for y in range(H, -2, -1))
 
@@ -127,7 +152,7 @@ class r3_model:
                    for c in self.triangles)
 
     def read_dist_map(self, map, robot, offX = 0, offY = 0):
-        return self.dist_maps[map][robot.y][robot.x + self.offset + offX][robot.dir]
+        return self.dist_maps[map][robot.y][robot.x + self.offset + offX][robot.dir()]
 
     def read_entrance_map(self, robot, offX = 0, offY = 0): return self.read_dist_map("entrance", robot, offX, offY)
     def read_exit_map(self, robot, offX = 0, offY = 0): return self.read_dist_map("exit", robot, offX, offY)
@@ -137,121 +162,94 @@ class r3_model:
 NULL_ROOM = r3_model("3x4", 0, 1)   # used for simulating hypothetical poses
 
 
-def compute_distance_map(room: r3_model, target: tuple = None, target2: tuple = None):
-    """
-    Returns a [height][width][4] distance map.
+def room_descriptor(shape, offset, output, obstacle, triangles):
+    if obstacle is None:
+        obstacle_x, obstacle_y = NO_OBSTACLE
+    else:
+        obstacle_x, obstacle_y = obstacle
 
-    Each value is the minimum number of actions required to reach
-    the target from (x, y, direction).
-
-    If target2 is provided, computes distance to the closest target.
-    Targets can be free cells or entrance/exit gaps.
-    """
-
-    W, H = room.width(), room.height()
-
-    # Initialize every state as unreachable.
-    hm = [[ [90, 90, 90, 90] for x in range(W)] for y in range(H)]
-
-    targets = [target]
-    if target2 is not None:
-        targets.append(target2)
-
-    # Seed the heat map.
-    for tx, ty in targets:
-        if room.kind(tx, ty) == "free":
-            for d in range(4):
-                hm[ty][tx][d] = 0
-        else:
-            # For an entrance/exit gap, seed states that can move into it.
-            for x in range(W):
-                for y in range(H):
-                    if room.kind(x, y) != "free":
-                        continue
-
-                    for d in range(4):
-                        dx, dy = V3.NekoMath.STEP_TUPLE_FROM_DIR[d]
-
-                        for sign in (1, -1):
-                            if (x + sign * dx, y + sign * dy) == (tx, ty):
-                                hm[y][x][d] = min(hm[y][x][d], 1)
-
-    # Repeatedly propagate distances.
-    while True:
-        new_hm = [[row[:] for row in hm[y]] for y in range(H)]
-
-        for x in range(W):
-            for y in range(H):
-                if room.kind(x, y) != "free":
-                    continue
-
-                for d in range(4):
-                    dx, dy = V3.NekoMath.STEP_TUPLE_FROM_DIR[d]
-
-                    # Turn left or right.
-                    turn_distance = min(
-                        hm[y][x][(d - 1) % 4],
-                        hm[y][x][(d + 1) % 4]
-                    ) + 1
-
-                    # Move forward or backward.
-                    move_distance = 90
-
-                    for sign in (1, -1):
-                        nx = x + sign * dx
-                        ny = y + sign * dy
-
-                        if room.kind(nx, ny) == "free":
-                            move_distance = min(
-                                move_distance,
-                                hm[ny][nx][d] + 1
-                            )
-
-                        elif (nx, ny) in targets:
-                            move_distance = min(move_distance, 1)
-
-                    new_hm[y][x][d] = min(
-                        hm[y][x][d],
-                        turn_distance,
-                        move_distance
-                    )
-
-        if new_hm == hm:
-            break
-
-        hm = new_hm
-
-    # Convert unreachable states from 90 to -1.
-    for y in range(H):
-        for x in range(W):
-            for d in range(4):
-                if hm[y][x][d] >= 90:
-                    hm[y][x][d] = -1
-
-    return hm
+    a, b = sorted(triangles)
+    triangle_code = ROOM_TRIANGLE_PAIR_CODES[(a, b)]
+    return (
+        obstacle_x
+        | (obstacle_y << 2)
+        | (ROOM_SHAPE_IDS[shape] << 4)
+        | (offset << 6)
+        | (output << 8)
+        | (triangle_code << 12)
+    )
 
 
-def compute_room_distance_maps(room: r3_model):
-    """Precompute distances to the entrance, exit, and nearest triangle."""
-    triangles = [
-        room.corner_cell(c)
-        for c in room.triangles
-    ]
+def room_from_descriptor(descriptor):
+    obstacle_code = descriptor & OBSTACLE_MASK
+    shape_id = (descriptor & SHAPE_MASK) >> 4
+    offset = (descriptor & OFFSET_MASK) >> 6
+    output = (descriptor & OUTPUT_MASK) >> 8
+    triangle_code = (descriptor & TRIANGLE_MASK) >> 12
 
-    return {
-        "entrance": compute_distance_map(room, room.entrance_cell()),
-        "exit": compute_distance_map(room, room.exit_cell()),
-        "triangle": compute_distance_map(
-            room, triangles[0], triangles[1]
-        ),
-    }
+    obstacle = None
+    if obstacle_code != 0b1111:
+        obstacle = (obstacle_code & 0b11, obstacle_code >> 2)
+
+    return r3_model(
+        ROOM_SHAPES[shape_id],
+        offset,
+        output,
+        obstacle,
+        set(ROOM_TRIANGLE_PAIRS[triangle_code]),
+    )
+
+
+def room_kind_from_descriptor(x, y, descriptor):
+    obstacle_code = descriptor & OBSTACLE_MASK
+    shape_id = (descriptor & SHAPE_MASK) >> 4
+    offset = (descriptor & OFFSET_MASK) >> 6
+    width, height = SHAPES[ROOM_SHAPES[shape_id]]
+
+    if 0 <= x < width and 0 <= y < height:
+        if obstacle_code != 0b1111 and obstacle_code == (x | (y << 2)):
+            return "obstacle"
+        return "free"
+
+    if x == offset and y == -1:
+        return "entrance"
+
+    if room_is_exit_from_descriptor(x, y, descriptor):
+        return "exit"
+    return "wall"
+
+
+def room_is_exit_from_descriptor(x, y, descriptor):
+    shape_id = (descriptor & SHAPE_MASK) >> 4
+    width, height = SHAPES[ROOM_SHAPES[shape_id]]
+    number = (descriptor & OUTPUT_MASK) >> 8
+    if number < width:
+        return x == number and y == -1
+    number -= width
+    if number < height:
+        return x == width and y == number
+    number -= height
+    if number < width:
+        return x == width - 1 - number and y == height
+    number -= width
+    return x == -1 and y == height - 1 - number
+
+
+def room_frequency_score(descriptor):
+    obstacle_code = descriptor & OBSTACLE_MASK
+    shape_id = (descriptor & SHAPE_MASK) >> 4
+    if obstacle_code == 0b1111:
+        obstacle_probability = 1 - probabilitie_of_room3_having_a_obstacle
+    else:
+        obstacle_probability = probabilitie_of_room3_having_a_obstacle
+    return obstacle_probability * probabilitie_of_room3_per_shape[ROOM_SHAPES[shape_id]]
+
 
 
 # --------------------------------------------------------------------------
 # Every legal room
 # --------------------------------------------------------------------------
-def all_rooms():
-    rooms = []
+def _iter_room_descriptors():
     for shape, (W, H) in SHAPES.items():
         for off in range(W):                       # entrance is on the bottom wall
             for out in range(2 * (W + H)):
@@ -264,8 +262,11 @@ def all_rooms():
                     return (min(max(g[0], 0), W - 1), min(max(g[1], 0), H - 1))
                 blocked = {in_front(g) for g in gaps}
 
-                obstacles = [None] + [(x, y) for x in range(W) for y in range(H)
-                                      if (x, y) not in blocked]
+                if ONLY_OBSTACLE_LESS_ROOMS:
+                    obstacles = [None]
+                else:
+                    obstacles = [None] + [(x, y) for x in range(W) for y in range(H)
+                                          if (x, y) not in blocked]
                 for obs in obstacles:
                     free_corners = []
                     for c in range(4):
@@ -275,15 +276,14 @@ def all_rooms():
                         if any(abs(gx - cx) + abs(gy - cy) == 1 for gx, gy in gaps):
                             continue
                         free_corners.append(c)
-                    for a, b in V3.NekoMath.combinations(free_corners, 2):
+                    for a, b in combinations(free_corners, 2):
+                        yield room_descriptor(shape, off, out, obs, (a, b))
+
+
+def all_room_descriptors():
+    return list(_iter_room_descriptors())
+
+def room_supplier(descriptors):
+    for descriptor in descriptors:
+        yield room_from_descriptor(descriptor)
                         
-                        room = r3_model(shape, off, out, obs, frozenset((a, b)))
-
-                        #object.__setattr__(
-                        #    room,
-                        #    "dist_maps",
-                        #    compute_room_distance_maps(room)
-                        #)
-
-                        rooms.append(room)
-    return rooms

@@ -97,11 +97,11 @@ class r3_robot_interface:
 
         base.brake()
         base.use_gyro(True)
-        self.on_triangle = triangle
+        self.is_on_triangle = triangle
 
 
     def copy(self):
-        n = r3_model_robot(self._room)
+        n = r3_model_robot(None)
         n.x, n.y, n._dir =    self.x, self.y, self._dir
         n.exited          =    self.exited
         n.last_dir        =    self.last_dir

@@ -144,15 +144,15 @@ async def room3check(robot: LineFollowerRobot, ctx: Context):
 async def room3(robot: LineFollowerRobot, ctx: Context):
 
     robot.set_modified_straight_speed(room3_const.straight_speed)
+    await robot.straight(150)
     print("Running room 3!!")
-    data = Room3info(robot)
-    robot.data = data
-    data.markInOutPosDisplay()
 
     robot.drive_base.use_gyro(True)
     alg = algorithm(r3_robot_interface(ctx, robot))
 
     while True:
+
+        await alg.robot.update_async()
         await alg.measure()
         finished = alg.step()
         await alg.robot.update_async()
