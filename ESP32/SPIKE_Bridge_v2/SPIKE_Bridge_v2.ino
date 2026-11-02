@@ -4,7 +4,7 @@
 VL53L1X sensor;
 HardwareSerial UART1(1);
 
-
+int rear_button_pin = 5;
 
 // ====================================================================================
 // Uart protocol stuff
@@ -138,6 +138,7 @@ void setup() {
   pinMode(ledR, OUTPUT);
   pinMode(ledG, OUTPUT);
   pinMode(ledB, OUTPUT);
+  pinMode(rear_button_pin, INPUT);
   digitalWrite(ledR, LOW);
   digitalWrite(ledG, LOW);
   digitalWrite(ledB, LOW);
@@ -181,17 +182,27 @@ void loop() {
 
     uint16_t distance = sensor.read();
 
-    byte packet[3];
+    byte packet[4];
+
+    byte rear_button = 0x00;
+\
+    if (digitalRead(rear_button_pin) == LOW){
+      Serial.println("Pressed!"); 
+      rear_button = 0x01; 
+    } else {
+      Serial.println("not pressed");
+    }
 
     if (sensor.timeoutOccurred()) {
         // Keep the previous valid distance
         packet[0] = lowByte(last_valid_distance);
         packet[1] = highByte(last_valid_distance);
         packet[2] = 0x01; // TIMEOUT
+        packet[3] = rear_button;
 
         Serial.println("TIMEOUT");
 
-        send_packet(packet, 3);
+        send_packet(packet, 4);
         restart_distance_sensor();
     }
     else {
@@ -200,10 +211,11 @@ void loop() {
         packet[0] = lowByte(distance);
         packet[1] = highByte(distance);
         packet[2] = 0x00; // VALID
+        packet[3] = rear_button;
 
         //Serial.println(distance);
 
-        send_packet(packet, 3);
+        send_packet(packet, 4);
     }
     //rgb.log(float(int(packetBuffer[(packetBufferIndex + 7) % 8][0])) / 254, float(int(packetBuffer[(packetBufferIndex + 7) % 8][1])) / 254, float(int(packetBuffer[(packetBufferIndex + 7) % 8][2])) / 254)
     rgb_sine_log_delay(0, 0.5, 0, 1, 100);

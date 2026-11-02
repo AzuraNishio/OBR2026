@@ -37,27 +37,8 @@ def room3_in_out_img(IN, out):
 
 async def test_suite(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):
     #!/usr/bin/env pybricks-micropython
-    from pybricks.iodevices import UARTDevice
-    from pybricks.parameters import Port
-
-    # Initialize the EV3
-    hub = ctx.hub
-
-    # Initialize sensor port 2 as a uart device
-    ser = UARTDevice(Port.B, baudrate=115200)
-
-    # Write some data
-    ser.write(b"\r\nHello, world!\r\n")
-
-    # Play a sound while we wait for some data
-    for i in range(3):
-        print("Bytes waiting to be read:", ser.waiting())
-
-    # Read all data received while the sound was playing
-    data = ser.read_all()
-    print(data)
     while True:
-         pass
+         print(floor((await robot.distance_sensor.distance() - 80 + 150) / 300))
 
 
         
