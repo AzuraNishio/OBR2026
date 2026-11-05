@@ -34,9 +34,12 @@ class r3_robot_interface:
         pass
 
     async def real_turn(self, dir):
+        await self.robot.garraUp()
         await self.robot.turn(90 * dir)
 
-    async def real_move(self, dir):        
+    async def real_move(self, dir):      
+        if dir == -1:
+            await self.robot.garraDown()  
         do_triangle = True
         robot = self.robot
 
@@ -54,15 +57,17 @@ class r3_robot_interface:
         while True:
             base.drive(200 * dir, 0)
  
-            if abs(base.distance() - start_dist) > 300:
+            if abs(base.distance() - start_dist) > 370:
                 break
 
-            if self.robot.is_seeing_any_black(): self.exited = 'exit'
-            if self.robot.is_seeing_any_silver(): self.exited = 'entrance'
+            if await self.robot.is_seeing_any_black(): self.exited = 'exit'
+            # if self.robot.is_seeing_any_silver(): self.exited = 'entrance'
 
             if await self.robot.esp32_sensor_pack.rear_sensor_pressed():
                 self.pushed_on = 1
-                break
+                self.robot.drive_base.brake()
+                await self.robot.garraUp()
+
 
             left_motor_load = abs(robot.L_motor.load())
             right_motor_load = abs(robot.R_motor.load())
@@ -91,6 +96,12 @@ class r3_robot_interface:
                     if cancel:
                         continue
                     await robot.ctx.speaker.beep()
+                    self.straight_data(-dir)
+                    while True:
+                        base.drive(-200 * dir, 0)
+
+                        if abs(base.distance() - start_dist) < 10:
+                            break
 
                 print("detected load!")
                 if triangle_detected:
@@ -105,6 +116,7 @@ class r3_robot_interface:
                 break
 
         base.brake()
+        await base.straight(-dir * 30)
         base.use_gyro(True)
         self.is_on_triangle = triangle
 
@@ -134,39 +146,38 @@ class r3_robot_interface:
     def turn_left(self):  self._turn(-1)
     def _turn(self, s):
         self._dir = (self._dir + s) % 4
-
         self.move_queue.append(self.real_turn(s))
-        
-        self._pay("turn")
+    
 
-    def forward(self):
+    def straight_data(self, dir):
         """Move one cell. Returns False if blocked (wall/obstacle)."""
         self._pay("move")
         dx, dy = STEP_TUPLE_FROM_DIR[self._dir]
         self.last_dir = (dx, dy)
-        nx, ny = self.x + dx, self.y + dy
-        self.move_queue.append(self.real_move(1))
+        nx, ny = self.x + (dx * dir), self.y + (dy * dir)
         self.x, self.y = nx, ny
+        
+        self.pushed_on = 0
+
+    def forward(self):
+        """Move one cell. Returns False if blocked (wall/obstacle)."""
+        self.straight_data(1)
+        self.move_queue.append(self.real_move(1))
         
         self.pushed_on = 0
         return True
 
     def backyard(self):
         """Move one cell back. Returns False if blocked (wall/obstacle)."""
-        self._pay("move")
-        dx, dy = STEP_TUPLE_FROM_DIR[self._dir]
-        self.last_dir = (-dx, -dy)
-        nx, ny = self.x - dx, self.y - dy
+        self.straight_data(-1)
         self.move_queue.append(self.real_move(-1))
-
-        self.x, self.y = nx, ny
         
         self.pushed_on = 0
         return True
 
     def measure(self, room = None):
         dist = self.real_last_measurement
-        return floor((dist - 80 + 150) / 300)
+        return min(floor((dist - 80 - 150) / 300), 4)
 
     def kind(self, room=None):
         if room is None: room = self._room

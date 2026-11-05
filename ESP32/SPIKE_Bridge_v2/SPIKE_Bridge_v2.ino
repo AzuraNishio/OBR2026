@@ -4,7 +4,8 @@
 VL53L1X sensor;
 HardwareSerial UART1(1);
 
-int rear_button_pin = 5;
+int rear_button_pin_L = 5;
+int rear_button_pin_R = 18;
 
 // ====================================================================================
 // Uart protocol stuff
@@ -138,7 +139,8 @@ void setup() {
   pinMode(ledR, OUTPUT);
   pinMode(ledG, OUTPUT);
   pinMode(ledB, OUTPUT);
-  pinMode(rear_button_pin, INPUT);
+  pinMode(rear_button_pin_L, INPUT);
+  pinMode(rear_button_pin_R, INPUT);
   digitalWrite(ledR, LOW);
   digitalWrite(ledG, LOW);
   digitalWrite(ledB, LOW);
@@ -183,14 +185,24 @@ void loop() {
     uint16_t distance = sensor.read();
 
     byte packet[4];
-
-    byte rear_button = 0x00;
+    float r = 0;
+    float b = 0;
+    byte rear_button_L = 0x00;
+    byte rear_button_R = 0x00;
 \
-    if (digitalRead(rear_button_pin) == LOW){
-      Serial.println("Pressed!"); 
-      rear_button = 0x01; 
+    if (digitalRead(rear_button_pin_L) == LOW){
+      Serial.print("L-on  "); 
+      rear_button_L = 0x01; 
+      r = 0.3;
     } else {
-      Serial.println("not pressed");
+      Serial.print("L-off ");
+    }
+    if (digitalRead(rear_button_pin_R) == LOW){
+      Serial.println("R-on"); 
+      rear_button_R = 0x01; 
+      b = 0.3;
+    } else {
+      Serial.println("R-off");
     }
 
     if (sensor.timeoutOccurred()) {
@@ -198,11 +210,12 @@ void loop() {
         packet[0] = lowByte(last_valid_distance);
         packet[1] = highByte(last_valid_distance);
         packet[2] = 0x01; // TIMEOUT
-        packet[3] = rear_button;
+        packet[3] = rear_button_L;
+        packet[4] = rear_button_R;
 
         Serial.println("TIMEOUT");
 
-        send_packet(packet, 4);
+        send_packet(packet, 5);
         restart_distance_sensor();
     }
     else {
@@ -211,14 +224,16 @@ void loop() {
         packet[0] = lowByte(distance);
         packet[1] = highByte(distance);
         packet[2] = 0x00; // VALID
-        packet[3] = rear_button;
+        packet[3] = rear_button_L;
+        packet[4] = rear_button_R;
 
         //Serial.println(distance);
 
-        send_packet(packet, 4);
+        send_packet(packet, 5);
     }
     //rgb.log(float(int(packetBuffer[(packetBufferIndex + 7) % 8][0])) / 254, float(int(packetBuffer[(packetBufferIndex + 7) % 8][1])) / 254, float(int(packetBuffer[(packetBufferIndex + 7) % 8][2])) / 254)
-    rgb_sine_log_delay(0, 0.5, 0, 1, 100);
+    
+    rgb_sine_log_delay(r, 0.5, b, 1, 100);
     tick_listener();
     if (is_packet_new){
       is_packet_new = false;
