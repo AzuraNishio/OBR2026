@@ -9,7 +9,7 @@ from libs.Utills import *
 from libs.AwareRobotics.AwDriveBase import *
 from Scaffolding import *
 from libs.Exceptions import *
-
+from constants import *
 
 class LineFollowerRobot:
     def __getattr__(self, name):
@@ -27,7 +27,7 @@ class LineFollowerRobot:
     async def turn(self, angle):
         return await self.drive_base.turn(angle + copysign(1, angle))
 
-    def __init__(self, ctx: Context, L_sensor_port, R_sensor_port, L_motor_port, R_motor_port, wheel_diameter, wheel_distance, X_distance_CoR_sensor, Y_distance_CoR_sensor, R_motor_forward_direction = Direction.CLOCKWISE, L_motor_forward_direction = Direction.CLOCKWISE, ultrasonic_sensor = "E", garra_motor = "F"):
+    def __init__(self, ctx: Context, L_sensor_port, R_sensor_port, L_motor_port, R_motor_port, wheel_diameter, wheel_distance, X_distance_CoR_sensor, Y_distance_CoR_sensor, R_motor_forward_direction = Direction.CLOCKWISE, L_motor_forward_direction = Direction.CLOCKWISE, esp32_sensor_pack = "E", garra_motor = "F"):
         self.garra_up = True
         # Keep trying to connect
         self.animTime = ctx.time()
@@ -44,7 +44,7 @@ class LineFollowerRobot:
                 self.garra_motor:Motor = ctx.get_port_of_type(garra_motor, Motor)
                 self.R_sensor:ColorSensor = ctx.get_port_of_type(R_sensor_port, ColorSensor)
                 self.L_sensor:ColorSensor = ctx.get_port_of_type(L_sensor_port, ColorSensor)
-                self.distance_sensor:GenericDistanceSensor = ctx.get_port_of_type(ultrasonic_sensor, GenericDistanceSensor)
+                self.esp32_sensor_pack:Esp32SensorPack = ctx.get_port_of_type(esp32_sensor_pack, Esp32SensorPack)
                 #self.distance_sensor.lights.off()
                 break
             except WrongPortError as e:
@@ -118,19 +118,22 @@ class LineFollowerRobot:
     def set_modified_straight_speed(self, speed):
         self.modified_straight_speed = speed
 
-    async def signal_blink_ultrasonic(self):
+    async def signal_blink(self):
         for i in range(4): 
-            self.distance_sensor.lights.on((100, 0, 100, 0))
+            self.esp32_sensor_pack.lights.on((100, 0, 100, 0))
             await self.ctx.wait(0.125)
-            self.distance_sensor.lights.on((0, 100, 0, 100))
+            self.esp32_sensor_pack.lights.on((0, 100, 0, 100))
             await self.ctx.wait(0.125)
-        self.distance_sensor.lights.off()
+        self.esp32_sensor_pack.lights.off()
 
     def is_forcing_motor(self, force):
         return abs(self.L_motor.load()) > force or abs(self.R_motor.load()) > force 
 
     async def is_seeing_any_black(self):
         return await self.R_sensor.reflection() < 30 or await self.L_sensor.reflection() < 30
+
+    async def is_seeing_any_silver(self):
+        return await self.R_sensor.reflection() > line_follower_constants.silver_min_threshold or await self.L_sensor.reflection() > line_follower_constants.silver_min_threshold
 
     async def black_dir(self):
         return (1 if await self.R_sensor.reflection() < 30 else 0) - (1 if await self.L_sensor.reflection() < 30 else 0)
@@ -225,7 +228,7 @@ class LineFollowerRobot:
             if await self.L_sensor.reflection() <= L_reflection_less_than:
                 break
 
-            distance = await self.distance_sensor.distance()
+            distance = await self.esp32_sensor_pack.laser_distance()
             if distance <= ultrasonic_less_than:
                 break
 

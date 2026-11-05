@@ -30,7 +30,7 @@ class r3_robot_interface:
 
         self.move_queue.clear()
 
-        self.real_last_measurement = await self.robot.distance_sensor.distance()
+        self.real_last_measurement = await self.robot.esp32_sensor_pack.laser_distance()
         pass
 
     async def real_turn(self, dir):
@@ -48,11 +48,20 @@ class r3_robot_interface:
         triangle = False
         # base.use_gyro(False)
         sonic_check_time = robot.ctx.time()
-        sonic_dist = await robot.distance_sensor.distance()
+        sonic_dist = await robot.esp32_sensor_pack.laser_distance()
+        self.exited = None
+        self.pushed_on = 0
         while True:
             base.drive(200 * dir, 0)
  
             if abs(base.distance() - start_dist) > 300:
+                break
+
+            if self.robot.is_seeing_any_black(): self.exited = 'exit'
+            if self.robot.is_seeing_any_silver(): self.exited = 'entrance'
+
+            if await self.robot.esp32_sensor_pack.rear_sensor_pressed():
+                self.pushed_on = 1
                 break
 
             left_motor_load = abs(robot.L_motor.load())

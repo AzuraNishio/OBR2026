@@ -90,7 +90,7 @@ class Room3info:
             maxDist = 0
 
             while not self.robot.drive_base.done():
-                dist = await self.robot.distance_sensor.distance()
+                dist = await self.robot.esp32_sensor_pack.laser_distance()
                 smooth = (smooth * 4 + dist) * 0.2
                 maxDist = max(maxDist, smooth)
             self.robot.drive_base.brake()
@@ -135,19 +135,19 @@ async def room3check(robot: LineFollowerRobot, ctx: Context):
         
         # Surprise challenge (ignore)
         if surprises.signal_on_room3:
-            await robot.signal_blink_ultrasonic()
+            await robot.signal_blink()
 
         await room3(robot, ctx)
                 
 async def align_wall_distance_if_reasonable(robot: LineFollowerRobot, distance, n = -2):
     # Generic wall-distance alignment helper, called from many positions inside the room -
     # no fixed spot to diagram here (see call sites for position context).
-    start_dist = await robot.distance_sensor.distance()
+    start_dist = await robot.esp32_sensor_pack.laser_distance()
     displaced_dist = distance - 110
     error = start_dist - displaced_dist 
     if error < 700 and error > -300 and not robot.data.output == n:
         await robot.straight(error)
-        await robot.straight(displaced_dist - await robot.distance_sensor.distance())   
+        await robot.straight(displaced_dist - await robot.esp32_sensor_pack.laser_distance())   
 
 async def straight_back_untill_black_or_wall_and_mark(n, robot: LineFollowerRobot, data: Room3info, do_triangle = True):
     # Generic backward-drive-until-wall/line/triangle helper, reused from several
@@ -161,11 +161,11 @@ async def straight_back_untill_black_or_wall_and_mark(n, robot: LineFollowerRobo
     triangle = False
     # base.use_gyro(False)
     sonic_check_time = robot.ctx.time()
-    sonic_dist = await robot.distance_sensor.distance()
+    sonic_dist = await robot.esp32_sensor_pack.laser_distance()
     while True:
         base.drive(-room3_const.straight_till_speed, 0)
         if robot.ctx.time() - sonic_check_time > 1:
-            dist = await robot.distance_sensor.distance()
+            dist = await robot.esp32_sensor_pack.laser_distance()
             sonic_check_time = robot.ctx.time() 
             if abs(dist - sonic_dist) < 4 and dist < 1300:
                 break
@@ -239,7 +239,7 @@ async def align_at_wall_if_close(robot: LineFollowerRobot, wall = None, repositi
     # see the diagram at each call site.
     if wall:
         print(f"Aligning at wall {wall}")
-    start_dist = await robot.distance_sensor.distance()
+    start_dist = await robot.esp32_sensor_pack.laser_distance()
     if start_dist < max_dist and not robot.data.output == wall:
         robot.use_gyro(False)
         await robot.straight(max_dist + 30)
@@ -252,7 +252,7 @@ async def align_at_wall_or_black_if_close(robot: LineFollowerRobot, wall = None,
     # question turned out to be the (already found) output wall.
     if wall:
         print(f"Aligning at wall {wall}")
-    start_dist = await robot.distance_sensor.distance()
+    start_dist = await robot.esp32_sensor_pack.laser_distance()
     if start_dist < 150:
         robot.use_gyro(False)
         await robot.straight(170)

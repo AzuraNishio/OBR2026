@@ -27,7 +27,7 @@ def main():
         R_sensor_port=      "D",
         L_motor_port=       "A",
         R_motor_port=       "B",
-        ultrasonic_sensor = "F",
+        esp32_sensor_pack = "F",
         garra_motor       = "E",
         wheel_diameter= 40,
         wheel_distance= 110,

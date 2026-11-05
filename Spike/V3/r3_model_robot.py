@@ -10,6 +10,7 @@ class r3_model_robot:
         self.noclip = False                 # if True, robot can move through walls/obstacles
         self.pushed_on = 0
         self.last_dir = (0, 0)
+        self.log = []
 
     def copy(self):
         n = r3_model_robot(self._room)

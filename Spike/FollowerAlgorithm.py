@@ -199,7 +199,7 @@ class FollowerAlgorithm:
         robot = self.robot
         l = line_follower_constants.obstacle_side
 
-        distance = await robot.distance_sensor.distance()
+        distance = await robot.esp32_sensor_pack.laser_distance()
 
         if distance >= line_follower_constants.obstacle_trigger_dist:
             return
@@ -209,7 +209,7 @@ class FollowerAlgorithm:
         # Surprise challenge (ignore)
         if surprises.signal_on_obstacle:
             await self.ctx.wait(6)
-            await robot.signal_blink_ultrasonic()
+            await robot.signal_blink()
 
         await robot.drive_base.straight(distance - 20)
         await robot.drive_base.straight(-40)
@@ -225,7 +225,7 @@ class FollowerAlgorithm:
 
         while True:
             await robot.drive_base.turn(l * -90)
-            if await robot.distance_sensor.distance() > 80:
+            if await robot.esp32_sensor_pack.laser_distance() > 80:
                 await robot.drive_base.turn(l * 90)
                 await robot.drive_base.straight(110)
                 await robot.drive_base.turn(l * -90)

@@ -52,15 +52,15 @@ class ESP32_bridge:
                 else:
                     self._write_to_packet_buffer(byte)
 
-    def send_packet(self, packet):
-        encoded = []
-
-        for b in packet:
-            encoded.extend(self.alt_map.get(b, [b]))
-
-        encoded.append(STOP_FLAG)
-
-        self.device.write(bytes(encoded))
+#    def send_packet(self, packet):
+#        encoded = []
+#
+#        for b in packet:
+#            encoded.extend(self.alt_map.get(b, [b]))
+#
+#        encoded.append(STOP_FLAG)
+#
+#        self.device.write(bytes(encoded))
 
 
 class ESP32_distance_sensor(ESP32_bridge):
@@ -87,7 +87,7 @@ class ESP32_distance_sensor(ESP32_bridge):
         return (self.get_packet()[0] | (self.get_packet()[1] << 8))
 
 # TODO: prevent eternal pulling and buffer buildup. Make a bg process
-class GenericDistanceSensor:
+class Esp32SensorPack:
     def __init__(self, port):
         try:
             self.sensor = UltrasonicSensor(port)
@@ -97,7 +97,7 @@ class GenericDistanceSensor:
             except:                    
                 self.sensor = ESP32_distance_sensor(port)
 
-    async def distance(self):
+    async def laser_distance(self):
         return await self.sensor.distance() 
 
     async def rear_sensor_pressed(self):
@@ -108,7 +108,7 @@ class GenericDistanceSensor:
 
 
 def init():
-    dist_sensor = GenericDistanceSensor(Port.F)
+    dist_sensor = Esp32SensorPack(Port.F)
     while True:
         for i in range(1):
             print(f"{(dist_sensor.distance_sinc() or 0) / 10:.0f}")

@@ -25,7 +25,7 @@ from V3.obrExperimentalData import *
 
 SENSOR_FAR = 4
 SHAPES = {"3x3": (3, 3), "3x4": (3, 4), "4x3": (4, 3)}   # (width, height)
-ONLY_OBSTACLE_LESS_ROOMS = True
+ONLY_OBSTACLE_LESS_ROOMS = False
 OBSTACLE_MASK = 0x000F
 SHAPE_MASK = 0x0030
 OFFSET_MASK = 0x00C0
@@ -55,18 +55,16 @@ class r3_model:
     output: int                # exit gap = wall number `output`
     obstacle: tuple = None     # (x, y) or None
     triangles: set = set()   # set of corner numbers {0,1,2,3}
-    dist_maps: dict = None
 
-    def __init__(self, shape, offset, output, obstacle=None, triangles=set()):
+    def __init__(self, shape, offset, output, obstacle=None, triangles=None):
         self.shape = shape
         self.offset = offset
         self.output = output
         self.obstacle = obstacle
-        self.triangles = triangles
+        self.triangles = set() if triangles is None else set(triangles)
 
     def width(self):  return SHAPES[self.shape][0]
     def height(self): return SHAPES[self.shape][1]
-    def perimeter(self): return 2 * (self.width() + self.height())
 
     def wall_cell(self, n):
         """Position (outside the room) of wall segment number n."""
@@ -81,15 +79,6 @@ class r3_model:
 
     def entrance_cell(self): return self.wall_cell(self.offset)
     def exit_cell(self):     return self.wall_cell(self.output)
-    def frequency_score(self):     
-        score = 1
-        if self.obstacle is None: score *= 1 - probabilitie_of_room3_having_a_obstacle
-        else                    : score *= probabilitie_of_room3_having_a_obstacle
-
-        score *= probabilitie_of_room3_per_shape[self.shape]
-
-        return score
-
     def free_area(self):
         a = self.height() * self.width()
         a -= 2
@@ -132,7 +121,6 @@ class r3_model:
         return n
 
     def render(self, robot=None):
-        robot._room = self
         W, H = self.width(), self.height()
         g = {}
         for y in range(-1, H + 1):
@@ -143,7 +131,7 @@ class r3_model:
         for c in self.triangles:
             g[self.corner_cell(c)] = "TT"
         if robot is not None:
-            g[(robot._x(), robot._y())] = "/>\\<"[robot.dir()] + "\\>/<"[robot.dir()]
+            g[(robot.x + self.offset, robot.y)] = "/>\\<"[robot.dir()] + "\\>/<"[robot.dir()]
         return "\n".join("".join(g[(x, y)] for x in range(-1, W + 1))
                          for y in range(H, -2, -1))
 
@@ -151,14 +139,6 @@ class r3_model:
         return any(self.corner_cell(c) == (x, y)
                    for c in self.triangles)
 
-    def read_dist_map(self, map, robot, offX = 0, offY = 0):
-        return self.dist_maps[map][robot.y][robot.x + self.offset + offX][robot.dir()]
-
-    def read_entrance_map(self, robot, offX = 0, offY = 0): return self.read_dist_map("entrance", robot, offX, offY)
-    def read_exit_map(self, robot, offX = 0, offY = 0): return self.read_dist_map("exit", robot, offX, offY)
-    def read_triangle_map(self, robot, offX = 0, offY = 0): return self.read_dist_map("triangle", robot, offX, offY)
-
-    
 NULL_ROOM = r3_model("3x4", 0, 1)   # used for simulating hypothetical poses
 
 
@@ -180,7 +160,7 @@ def room_descriptor(shape, offset, output, obstacle, triangles):
     )
 
 
-def room_from_descriptor(descriptor):
+def room_from_descriptor(descriptor, reuse=None):
     obstacle_code = descriptor & OBSTACLE_MASK
     shape_id = (descriptor & SHAPE_MASK) >> 4
     offset = (descriptor & OFFSET_MASK) >> 6
@@ -191,13 +171,24 @@ def room_from_descriptor(descriptor):
     if obstacle_code != 0b1111:
         obstacle = (obstacle_code & 0b11, obstacle_code >> 2)
 
-    return r3_model(
-        ROOM_SHAPES[shape_id],
-        offset,
-        output,
-        obstacle,
-        set(ROOM_TRIANGLE_PAIRS[triangle_code]),
-    )
+    triangles = ROOM_TRIANGLE_PAIRS[triangle_code]
+    if reuse is None:
+        return r3_model(
+            ROOM_SHAPES[shape_id],
+            offset,
+            output,
+            obstacle,
+            triangles,
+        )
+
+    reuse.shape = ROOM_SHAPES[shape_id]
+    reuse.offset = offset
+    reuse.output = output
+    reuse.obstacle = obstacle
+    reuse.triangles.clear()
+    for corner in triangles:
+        reuse.triangles.add(corner)
+    return reuse
 
 
 def room_kind_from_descriptor(x, y, descriptor):
@@ -284,6 +275,7 @@ def all_room_descriptors():
     return list(_iter_room_descriptors())
 
 def room_supplier(descriptors):
+    room = r3_model("3x3", 0, 1)
     for descriptor in descriptors:
-        yield room_from_descriptor(descriptor)
+        yield room_from_descriptor(descriptor, room)
                         

@@ -8,14 +8,13 @@ from pybricks.pupdevices import *
 from libs.Utills import *
 from libs.Exceptions import * 
 from libs.AwareRobotics.AwDriveBase import *
-import Scaffolding
 
 class FailHandler:
     def __init__(self):
         self.ctx = None
         self.display_state = ""
 
-    def bindContext(self, ctx: Scaffolding.Context):
+    def bindContext(self, ctx):
         self.ctx = ctx
     
     def exception(self, e: Exception):
@@ -30,7 +29,7 @@ class FailHandler:
 
         raise e
     
-    def stuck_while_driving(self, base: AwDriveBase, state: str, time: int):
+    def stuck_while_driving(self, base, state: str, time: int):
         if time > 500:
             print(state)
             if state == "left":

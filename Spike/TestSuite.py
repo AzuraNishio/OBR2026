@@ -1,66 +1,75 @@
-from pybricks import *
-from pybricks.hubs import *
-from pybricks import *
-from pybricks.iodevices import *
-from pybricks.robotics import *
-from pybricks.hubs import *
-from pybricks.parameters import *
-from libs.Utills import *
-from Scaffolding import *
-from LineFollowerRobot import *
-from Model import *
-from umath import *
-from FollowerAlgorithm import *
-from TestSuite import *
-from Scaffolding import Context
-from usys import stdin
-from uselect import poll
-import Room3
 
 def isTest():
-    return False
-
-def room3_in_out_img(IN, out):
-        s = """
-        9IHG9
-        J...F
-        K...E            
-        L...D
-        9ABC9
-        """.replace("-ABCDEFGHIJKL"[int(IN)], "6").replace("-ABCDEFGHIJKL"[int(out)], "0")
-
-        for i in range(12):
-             s = s.replace("ABCDEFGHIJKL"[i], "9")
-
-        return s
+    return True
 
 
-async def test_suite(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):
-    #!/usr/bin/env pybricks-micropython
-    while True:
-         print(floor((await robot.distance_sensor.distance() - 80 + 150) / 300))
+async def test_suite(ctx, robot, model):
+    await room3_algorithm_speed_test(max_steps=64, iterations=64)
 
 
-        
+async def room3_algorithm_speed_test(iterations=1, max_steps=16):
+    """Time the shared Room 3 algorithm using simulated robots only."""
+    from pybricks.tools import StopWatch
+    from V3.r3_algorithm import algorithm
+    from V3.r3_model import all_room_descriptors, room_from_descriptor
+    from V3.r3_model_robot import r3_model_robot
+    from V3.NekoMath import PrettyPrint
 
-        
+    if iterations < 1 or max_steps < 1:
+        raise ValueError("iterations and max_steps must be positive")
 
+    descriptors = all_room_descriptors()
+    timer = StopWatch()
+    total_ms = 0
+    total_steps = 0
+    finished_runs = 0
 
+    pp = PrettyPrint()
 
+    pp + "Room 3 speed test: simulated robot only; hardware will not move"
+    pp.line_break()
+    pp + f"Hypotheses per run: {len(descriptors)}" 
+    pp + f"Max steps per run: {max_steps}" 
+    pp + f"iterations: {iterations}" 
+    pp.print()
 
+    for run_index in range(iterations):
+        print("Currently running iteration", run_index)
+        descriptor_index = (run_index * (len(descriptors) - 1)) // max(iterations - 1, 1)
+        simulated_robot = r3_model_robot(room_from_descriptor(descriptors[descriptor_index]))
+        alg = algorithm(simulated_robot, verbose=False, render=False)
 
- 
+        start_ms = timer.time()
+        steps = 0
+        finished = False
+        while steps < max_steps and not finished:
+            await alg.measure()
+            finished = alg.step()
+            steps += 1
+
+        elapsed_ms = timer.time() - start_ms
+        total_ms += elapsed_ms
+        total_steps += steps
+        if finished:
+            finished_runs += 1
+        print("Run %d: %d steps, %s, %.1f ms" % (
+            run_index + 1,
+            steps,
+            "finished" if finished else "step limit",
+            elapsed_ms,
+        ))
+
+    pp = PrettyPrint()
+    pp += f"Done running tests {iterations} tests!"
     
+    pp.line_break()
 
+    pp + f"Average run time: {(total_ms / iterations):.1f} ms"
+    pp + f"Average time per step: {(total_ms / max(total_steps, 1)):.1f} ms"
+    pp + f"Runs reaching an exit: {finished_runs} of {iterations}"
+    pp.print()
 
-
-def reaction_testing(ctx: Context, robot: LineFollowerRobot, model: TreadmilDifferentialDriveRobotModel):
-    while True:
-        print(f"Left: {robot.L_sensor.reflection():<4}, Right: {robot.R_sensor.reflection():<4}, Sum: {(robot.R_sensor.reflection() + robot.L_sensor.reflection()):<4}")
-
-
-    
-    
+    raise RuntimeError()
 
 
 
