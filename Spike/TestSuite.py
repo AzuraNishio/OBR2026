@@ -1,16 +1,19 @@
 
+import gc
+
+
 def isTest():
     return True
 
 
 async def test_suite(ctx, robot, model):
-    await room3_algorithm_speed_test(max_steps=64, iterations=64)
+    await room3_algorithm_speed_test(max_steps=128, iterations=128)
 
 
 async def room3_algorithm_speed_test(iterations=1, max_steps=16):
     """Time the shared Room 3 algorithm using simulated robots only."""
     from pybricks.tools import StopWatch
-    from V3.r3_algorithm import algorithm
+    from V3.r3_algorithm import algorithm, destroy_algorithm
     from V3.r3_model import all_room_descriptors, room_from_descriptor
     from V3.r3_model_robot import r3_model_robot
     from V3.NekoMath import PrettyPrint
@@ -37,7 +40,11 @@ async def room3_algorithm_speed_test(iterations=1, max_steps=16):
         print("Currently running iteration", run_index)
         descriptor_index = (run_index * (len(descriptors) - 1)) // max(iterations - 1, 1)
         simulated_robot = r3_model_robot(room_from_descriptor(descriptors[descriptor_index]))
+
+        
+        print("Before alg: Free RAM:", gc.mem_free(), "bytes,", "Used RAM:", gc.mem_alloc(), "bytes")
         alg = algorithm(simulated_robot, verbose=False, render=False)
+        print("After alg: Free RAM:", gc.mem_free(), "bytes,", "Used RAM:", gc.mem_alloc(), "bytes")
 
         start_ms = timer.time()
         steps = 0
@@ -58,6 +65,11 @@ async def room3_algorithm_speed_test(iterations=1, max_steps=16):
             "finished" if finished else "step limit",
             elapsed_ms,
         ))
+
+        print("Before alg destruction: Free RAM:", gc.mem_free(), "bytes,", "Used RAM:", gc.mem_alloc(), "bytes")
+        destroy_algorithm(alg)
+        print("After alg destruction: Free RAM:", gc.mem_free(), "bytes,", "Used RAM:", gc.mem_alloc(), "bytes")
+
 
     pp = PrettyPrint()
     pp += f"Done running tests {iterations} tests!"
