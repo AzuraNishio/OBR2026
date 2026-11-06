@@ -50,9 +50,6 @@ async def room3check(robot: LineFollowerRobot, ctx: Context):
             return
         await robot.turn(-20)
         
-        # Surprise challenge (ignore)
-        if surprises.signal_on_room3:
-            await robot.signal_blink()
 
         await room3(robot, ctx)
               
@@ -60,14 +57,13 @@ async def room3check(robot: LineFollowerRobot, ctx: Context):
 async def room3(robot: LineFollowerRobot, ctx: Context):
 
     robot.set_modified_straight_speed(room3_const.straight_speed)
-    await robot.straight(150)
+    await robot.straight(200)
     print("Running room 3!!")
 
     robot.drive_base.use_gyro(True)
     alg = algorithm(r3_robot_interface(ctx, robot))
 
     while True:
-
         await alg.robot.update_async()
         await alg.measure()
         finished = alg.step()

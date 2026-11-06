@@ -74,17 +74,18 @@ class ESP32_distance_sensor(ESP32_bridge):
         return (self.get_packet()[0] | (self.get_packet()[1] << 8))
 
     
-    async def rear_sensor_pressed(self):
+    async def L_button_pressed(self):
         await self.tick_packet_receiver()
         if len(self.get_packet()) < 1: return 9999
         if len(self.get_packet()) > 0 and self.get_packet()[0] == 0: return 9999
         return self.get_packet()[3] == 1
 
-    def sinc_distance(self):
-        self.tick_packet_receiver()
+    async def R_button_pressed(self):
+        await self.tick_packet_receiver()
         if len(self.get_packet()) < 1: return 9999
         if len(self.get_packet()) > 0 and self.get_packet()[0] == 0: return 9999
-        return (self.get_packet()[0] | (self.get_packet()[1] << 8))
+        return self.get_packet()[4] == 1
+
 
 # TODO: prevent eternal pulling and buffer buildup. Make a bg process
 class Esp32SensorPack:
@@ -101,7 +102,7 @@ class Esp32SensorPack:
         return await self.sensor.distance() 
 
     async def rear_sensor_pressed(self):
-        return await self.sensor.rear_sensor_pressed()
+        return await self.sensor.L_button_pressed()
 
     def distance_sinc(self):
         return self.sensor.sinc_distance()

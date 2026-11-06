@@ -49,7 +49,13 @@ class r3_model_robot:
         if k in ("wall", "obstacle"):
             self.pushed_on = 1
             return False
+
+        if self.on_triangle(dx=dx, dy=dy):
+            return False
+
         self.x, self.y = nx, ny
+        
+    
         if k in ("exit", "entrance"):
             self.exited = k
         self.pushed_on = 0
@@ -63,9 +69,14 @@ class r3_model_robot:
         nx, ny = self.x - dx, self.y - dy
         k = "free" if self.noclip else self._room.kind(nx + self._room.offset, ny)
         if k in ("wall", "obstacle"):
-            self.pushed_on = -1
+            self.pushed_on = 1
             return False
+    
+        if self.on_triangle(dx=-dx, dy=-dy):
+            return False
+
         self.x, self.y = nx, ny
+        
         if k in ("exit", "entrance"):
             self.exited = k
         self.pushed_on = 0
@@ -80,11 +91,12 @@ class r3_model_robot:
         if room is None: room = self._room
         return room.kind(self.x + room.offset, self.y)
 
-    def on_triangle(self, room = None):
+    def on_triangle(self, room = None, dx=0, dy=0):
         """True if standing on a triangle corner (assumes that is how it is found)."""
         if room is None: room = self._room
+        if room is None: return False
 
-        return any(room.corner_cell(c) == (self.x + room.offset, self.y)
+        return any(room.corner_cell(c) == (self.x + room.offset + dx, self.y + dy)
                    for c in room.triangles)
 
     def _pay(self, what):

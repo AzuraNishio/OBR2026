@@ -20,6 +20,7 @@ RIGHT = 1
 BACKWARD = 2
 LEFT = 3
 
+clearance_after_r3 = 2
 
 """
 Ideal score function:
@@ -175,7 +176,7 @@ class r3_info:
         room = r3_model("3x3", 0, 1)
         for descriptor in self.room_descriptors:
             room_from_descriptor(descriptor, room)
-            if measurement(room) == result:
+            if measurement(room, ref=result) == result:
                 matching_descriptors.append(descriptor)
         if not matching_descriptors:
             if self.verbose:
@@ -304,14 +305,22 @@ def action_from_key(key, robot: r3_model_robot, print = False, print_call = prin
     pass
 
 def measure(rr):
-    def mm(room: r3_model):
+    def mm(room: r3_model, ref = None):
         rr._room = room
         pp = 0
         d = rr.last_dir
-        if not room is None and room.kind(d[0] + rr.x + room.offset, d[1] + rr.y) in ["obstacle", "wall"]:
-            pp = 1 if straight_move_vec_from_4_state_dir(rr.dir()) == rr.last_dir else -1
+        forward = straight_move_vec_from_4_state_dir(rr.dir()) == rr.last_dir
+        if not room is None and (
+                (    forward and room.kind(d[0] + rr.x + room.offset, d[1] + rr.y) in ["obstacle", "wall"])
+            or  (not forward and room.kind(d[0] + rr.x + rr.x + room.offset, d[1] + rr.y + rr.y) in ["obstacle", "wall"])
+            ):
+            pp = 1
         
-        return (rr.measure(room=room), rr.on_triangle(room=room), rr.exited, pp)
+        if ref is None: return (rr.measure(room=room), rr.on_triangle(room=room), rr.exited, pp)
+        dist = rr.measure(room=room)
+        if dist > clearance_after_r3 and  dist < 4: dist = min(dist, ref[0])
+        if forward: return (dist, rr.on_triangle(room=room), rr.exited, pp)
+        return (dist, rr.on_triangle(room=room, dx=d[0], dy=d[1]), rr.exited, pp)
     return mm
 
 def update_r3_run_info(robot: r3_model_robot, info: r3_info, data: dict, action):

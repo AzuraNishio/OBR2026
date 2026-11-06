@@ -179,20 +179,11 @@ class LineFollowerRobot:
     def integrityCheckTick(self):
         self.drive_base()
 
-    async def _garraDownRoutine(self):
-        await self.garra_motor.run_time(1000, 1000)
-
     async def garraDown(self):
         if not self.garra_up: return
         await self.drive_base.straight(10)
         await self.garra_motor.run_time(1000, 1000)
         self.garra_up = False
-
-
-        #multitask(self._garraDownRoutine())
-
-    async def _garraUpRoutine(self):
-        await self.garra_motor.run_time(-1000, 1000)
 
 
     async def garraUp(self):
@@ -201,9 +192,6 @@ class LineFollowerRobot:
         await self.garra_motor.run_time(-1000, 1300)
         self.garra_up = True
 
-        #multitask(self._garraUpRoutine())
-
-    
     async def driveUntillConditions(self, speed, turn, R_color=None, L_color=None,
                                     L_reflection_less_than=0, R_reflection_less_than=0,
                                     driven_distance=9999999, ultrasonic_less_than=0,
