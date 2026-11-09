@@ -1,0 +1,24 @@
+from V3.r3_algorithm import algorithm
+from constants import room3_const
+from r3_robot_interface import r3_robot_interface
+
+async def run_room3(robot, ctx):
+
+    robot.set_modified_straight_speed(room3_const.straight_speed)
+    await robot.straight(200)
+    print("Running room 3!!")
+
+    robot.drive_base.use_gyro(True)
+
+    interface = r3_robot_interface(ctx, robot)
+
+    alg = algorithm(interface)
+
+    while True:
+        await interface.update_async()
+        await alg.measure()
+        finished = alg.step()
+        await interface.update_async()
+        if finished: break
+
+    robot.clear_modified_straigth_speed()

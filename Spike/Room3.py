@@ -12,8 +12,8 @@ from libs.AwareRobotics.AwDriveBase import *
 from LineFollowerRobot import LineFollowerRobot
 from Scaffolding import *
 from math import *
-from constants import room3_const, surprises
-from V3.r3_algorithm import *
+from V3.r3_main import run_room3
+
 
 async def beep_n(robot: LineFollowerRobot, times):
     robot.ctx.speaker.volume(100)
@@ -51,25 +51,8 @@ async def room3check(robot: LineFollowerRobot, ctx: Context):
         await robot.turn(-20)
         
 
-        await room3(robot, ctx)
+        await run_room3(robot, ctx)
               
 
-async def room3(robot: LineFollowerRobot, ctx: Context):
-
-    robot.set_modified_straight_speed(room3_const.straight_speed)
-    await robot.straight(200)
-    print("Running room 3!!")
-
-    robot.drive_base.use_gyro(True)
-    alg = algorithm(r3_robot_interface(ctx, robot))
-
-    while True:
-        await alg.robot.update_async()
-        await alg.measure()
-        finished = alg.step()
-        await alg.robot.update_async()
-        if finished: break
-
-    robot.clear_modified_straigth_speed()
 
     

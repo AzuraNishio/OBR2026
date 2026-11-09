@@ -11,7 +11,7 @@ from LineFollowerRobot import *
 from Model import *
 from umath import *
 from libs.AwareRobotics.AwDriveBase import *
-from Room3 import room3check
+from Spike.V3.r3_main import room3check
 from constants import *
 
 class FollowerAlgorithm:
