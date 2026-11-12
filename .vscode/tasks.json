@@ -23,7 +23,7 @@
         {
             "label": "build_oppening_book",
             "type": "shell",
-            "command": "python Spike/V3/build_r3_opening_book.py --depth 4 --information-weight 40",
+            "command": "python Spike/V3/r3_build_opening_book.py --depth 4 --information-weight 40",
             "options": {
                 "cwd": "${workspaceFolder}"
             },
