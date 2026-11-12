@@ -74,21 +74,18 @@ def _measurement_for_room(robot, room, action):
         robot.y,
         robot.dir(),
     )
-    triangle = room.is_triangle(robot.x + room.offset, robot.y)
+    # Triangle layouts are intentionally not part of the opening-book room state.
+    touched_triangle = False
+    touched_wall = False
 
     dx, dy = robot.last_dir
-    pushed = 0
     if room.kind(
         robot.x + dx + room.offset,
         robot.y + dy,
     ) in ("obstacle", "wall"):
-        pushed = (
-            1
-            if straight_move_vec_from_4_state_dir(robot.dir()) == robot.last_dir
-            else -1
-        )
+        touched_wall = True
 
-    return distance, triangle, exited, pushed
+    return distance, touched_triangle, touched_wall, exited
 
 
 def _sensor_key(measurement):
@@ -198,13 +195,13 @@ class OpeningBookBuilder:
         edges = []
 
         for measurement, _ in outcomes.items():
-            if measurement[2] == "exit":
+            if measurement[3] == "exit":
                 child_id = 2
             else:
                 descriptors = sensor_groups[_sensor_key(measurement)]
                 child_info = r3_info(descriptors)
                 child_robot = next_robot.copy()
-                child_robot.exited = measurement[2]
+                child_robot.exited = measurement[3]
                 child_id = self._build_action_node(
                     child_robot,
                     child_info,
@@ -232,7 +229,7 @@ class OpeningBookBuilder:
             descriptors = sensor_groups[_sensor_key(measurement)]
             child_info = r3_info(descriptors)
             child_robot = initial_robot.copy()
-            child_robot.exited = measurement[2]
+            child_robot.exited = measurement[3]
             child_id = self._build_action_node(
                 child_robot,
                 child_info,

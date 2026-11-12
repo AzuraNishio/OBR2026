@@ -2,7 +2,7 @@ from V3.obrExperimentalData import *
 from V3.r3_model import ONLY_OBSTACLE_LESS_ROOMS, ROOM_SHAPES, SHAPES
 
 BOOK_FORMAT_VERSION = 1
-BOOK_POLICY_REVISION = 1
+BOOK_POLICY_REVISION = 2
 OPENING_INFORMATION_WEIGHT = 50.0
 ROOT_ACTION = 253
 TERMINAL_ACTION = 254
@@ -43,33 +43,30 @@ def opening_book_compatible(config):
 
 
 def encode_measurement(measurement):
-    distance, triangle, exited, pushed = measurement
+    distance, touched_triangle, touched_wall, exited = measurement
     if not 0 <= distance <= 4:
         raise ValueError("distance must be from 0 to 4")
 
     exit_code = {None: 0, "exit": 1, "entrance": 2}.get(exited)
     if exit_code is None:
         raise ValueError("invalid exit measurement")
-    if pushed not in (-1, 0, 1):
-        raise ValueError("pushed must be -1, 0, or 1")
-
     return (
         distance
-        | (int(bool(triangle)) << 3)
-        | (exit_code << 4)
-        | ((pushed + 1) << 6)
+        | (int(bool(touched_triangle)) << 3)
+        | (int(bool(touched_wall)) << 4)
+        | (exit_code << 5)
     )
 
 
 def decode_measurement(code):
     distance = code & 0x07
-    triangle = bool((code >> 3) & 1)
-    exit_code = (code >> 4) & 0x03
-    pushed = ((code >> 6) & 0x03) - 1
+    touched_triangle = bool((code >> 3) & 1)
+    touched_wall = bool((code >> 4) & 1)
+    exit_code = (code >> 5) & 0x03
 
-    if distance > 4 or exit_code > 2 or pushed < -1 or pushed > 1:
+    if distance > 4 or exit_code > 2:
         raise ValueError("invalid encoded measurement")
-    return distance, triangle, (None, "exit", "entrance")[exit_code], pushed
+    return distance, touched_triangle, touched_wall, (None, "exit", "entrance")[exit_code]
 
 
 def encode_nodes(nodes):

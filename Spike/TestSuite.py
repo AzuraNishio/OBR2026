@@ -3,7 +3,7 @@ import gc
 
 
 def isTest():
-    return False 
+    return False  
 
 
 async def test_suite(ctx, robot, model):
@@ -14,7 +14,7 @@ async def room3_algorithm_speed_test(iterations=1, max_steps=16):
     """Time the shared Room 3 algorithm using simulated robots only."""
     from pybricks.tools import StopWatch
     from V3.r3_algorithm import algorithm, destroy_algorithm
-    from V3.r3_model import all_room_descriptors, room_from_descriptor
+    from V3.r3_model import all_room_descriptors, room_supplier
     from V3.r3_model_robot import r3_model_robot
     from V3.NekoMath import PrettyPrint
 
@@ -39,12 +39,15 @@ async def room3_algorithm_speed_test(iterations=1, max_steps=16):
     for run_index in range(iterations):
         print("Currently running iteration", run_index)
         descriptor_index = (run_index * (len(descriptors) - 1)) // max(iterations - 1, 1)
-        simulated_robot = r3_model_robot(room_from_descriptor(descriptors[descriptor_index]))
+        simulated_room = next(room_supplier((descriptors[descriptor_index],)))
+        simulated_robot = r3_model_robot(simulated_room)
 
         
-        print("Before alg: Free RAM:", gc.mem_free(), "bytes,", "Used RAM:", gc.mem_alloc(), "bytes")
-        alg = algorithm(simulated_robot, verbose=False, render=False)
-        print("After alg: Free RAM:", gc.mem_free(), "bytes,", "Used RAM:", gc.mem_alloc(), "bytes")
+        free_memory = getattr(gc, "mem_free", lambda: 0)
+        allocated_memory = getattr(gc, "mem_alloc", lambda: 0)
+        print("Before alg: Free RAM:", free_memory(), "bytes,", "Used RAM:", allocated_memory(), "bytes")
+        alg = algorithm(simulated_robot, verbose=True, render=True)
+        print("After alg: Free RAM:", free_memory(), "bytes,", "Used RAM:", allocated_memory(), "bytes")
 
         start_ms = timer.time()
         steps = 0
@@ -66,9 +69,9 @@ async def room3_algorithm_speed_test(iterations=1, max_steps=16):
             elapsed_ms,
         ))
 
-        print("Before alg destruction: Free RAM:", gc.mem_free(), "bytes,", "Used RAM:", gc.mem_alloc(), "bytes")
+        print("Before alg destruction: Free RAM:", free_memory(), "bytes,", "Used RAM:", allocated_memory(), "bytes")
         destroy_algorithm(alg)
-        print("After alg destruction: Free RAM:", gc.mem_free(), "bytes,", "Used RAM:", gc.mem_alloc(), "bytes")
+        print("After alg destruction: Free RAM:", free_memory(), "bytes,", "Used RAM:", allocated_memory(), "bytes")
 
 
     pp = PrettyPrint()
@@ -81,7 +84,6 @@ async def room3_algorithm_speed_test(iterations=1, max_steps=16):
     pp + f"Runs reaching an exit: {finished_runs} of {iterations}"
     pp.print()
 
-    raise RuntimeError()
 
 
 

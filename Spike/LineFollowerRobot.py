@@ -28,7 +28,7 @@ class LineFollowerRobot:
         return await self.drive_base.turn(angle + copysign(1, angle))
 
     def __init__(self, ctx: Context, L_sensor_port, R_sensor_port, L_motor_port, R_motor_port, wheel_diameter, wheel_distance, X_distance_CoR_sensor, Y_distance_CoR_sensor, R_motor_forward_direction = Direction.CLOCKWISE, L_motor_forward_direction = Direction.CLOCKWISE, esp32_sensor_pack = "E", garra_motor = "F"):
-        self.garra_up = True
+        self.garra_up = False
         # Keep trying to connect
         self.animTime = ctx.time()
 

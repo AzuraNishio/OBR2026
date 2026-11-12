@@ -78,7 +78,7 @@ class ESP32_distance_sensor(ESP32_bridge):
         await self.tick_packet_receiver()
         if len(self.get_packet()) < 1: return 9999
         if len(self.get_packet()) > 0 and self.get_packet()[0] == 0: return 9999
-        return self.get_packet()[3] == 1
+        return False # self.get_packet()[3] == 1
 
     async def R_button_pressed(self):
         await self.tick_packet_receiver()

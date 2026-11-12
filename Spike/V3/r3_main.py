@@ -1,6 +1,6 @@
 from V3.r3_algorithm import algorithm
 from constants import room3_const
-from r3_robot_interface import r3_robot_interface
+from V3.r3_real_robot import r3_real_robot
 
 async def run_room3(robot, ctx):
 
@@ -10,7 +10,7 @@ async def run_room3(robot, ctx):
 
     robot.drive_base.use_gyro(True)
 
-    interface = r3_robot_interface(ctx, robot)
+    interface = r3_real_robot(ctx, robot)
 
     alg = algorithm(interface)
 

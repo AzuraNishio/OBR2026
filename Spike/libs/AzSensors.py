@@ -17,14 +17,7 @@ class AzColorSensor(ColorSensor):
         # Multipliers
         self.reflection_multiplier = 1.0
 
-        self.rgb_r_multiplier = 1.0
-        self.rgb_g_multiplier = 1.0
-        self.rgb_b_multiplier = 1.0
 
-        # Line weights
-        self.line_r_weight = 1.55
-        self.line_g_weight = 0.3
-        self.line_b_weight = 1.05
 
         # Snap values
         self.reflection_snap_value = 0
@@ -33,67 +26,6 @@ class AzColorSensor(ColorSensor):
 
     # ===============[ Reflection ]===============
 
-    async def reflection(self):
-
-        return (
-            await super().reflection()
-        ) * self.reflection_multiplier
-
-    def reflection_snap(self):
-        return self.reflection_snap_value
-
-# ===============[ RGB ]===============
-
-    async def rgb(self):
-
-        hsv = await super().hsv()
-        
-        h = hsv.h
-        s = hsv.s / 100
-        v = hsv.v / 100
-
-        c = v * s
-        x = c * (1 - abs((h / 60) % 2 - 1))
-        m = v - c
-
-        if h < 60:
-            rp, gp, bp = c, x, 0
-
-        elif h < 120:
-            rp, gp, bp = x, c, 0
-
-        elif h < 180:
-            rp, gp, bp = 0, c, x
-
-        elif h < 240:
-            rp, gp, bp = 0, x, c
-
-        elif h < 300:
-            rp, gp, bp = x, 0, c
-
-        else:
-            rp, gp, bp = c, 0, x
-        r = (rp + m) * 100
-        g = (gp + m) * 100
-        b = (bp + m) * 100
-
-        return (
-            r * self.rgb_r_multiplier,
-            g * self.rgb_g_multiplier,
-            b * self.rgb_b_multiplier
-        )
-
-
-    def rgb_snap(self):
-        return self.rgb_snap_value
-
-    # ===============[ Color ]===============
-
-    async def color(self):
-        return await super().color()
-
-    def color_snap(self):
-        return self.color_snap_value
 
     # ===============[ Snap System ]===============
 

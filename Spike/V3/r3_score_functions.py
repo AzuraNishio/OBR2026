@@ -3,10 +3,8 @@ from V3.NekoMath import *
 from V3.r3_info import r3_info
 from V3.r3_model_robot import r3_model_robot
 
-def info_robot_score_function(candidate_data: dict, info: r3_info, robot: r3_model_robot):
-    score = 0
-
-    return score
+def info_robot_score_function(candidate_data, info, robot):
+    return 0
 
 def room_robot_score_functions(robot: r3_model_robot, candidate_data: dict):
     delivered_victims = candidate_data["delivered_victims"]

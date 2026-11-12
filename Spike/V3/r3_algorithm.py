@@ -7,9 +7,9 @@ from V3.r3_score_functions import *
 from V3.r3_info import r3_info
 
 try:
-    from V3.r3_robot_interface import r3_robot_interface
+    from Spike.V3.r3_real_robot import r3_real_robot
 except ImportError:
-    r3_robot_interface = None
+    r3_real_robot = None
 
 try:
     from V3.r3_opening_book_data import BOOK_CONFIG, BOOK_DATA
@@ -89,20 +89,15 @@ def action_from_key(key, robot: r3_model_robot, print = False, print_call = prin
 def measure(rr):
     def mm(room: r3_model, ref = None):
         rr._room = room
-        pp = 0
         d = rr.last_dir
-        forward = straight_move_vec_from_4_state_dir(rr.dir()) == rr.last_dir
-        if not room is None and (
-                (    forward and room.kind(d[0] + rr.x + room.offset, d[1] + rr.y) in ["obstacle", "wall"])
-            or  (not forward and room.kind(d[0] + rr.x + rr.x + room.offset, d[1] + rr.y + rr.y) in ["obstacle", "wall"])
-            ):
-            pp = 1
-        
-        if ref is None: return (rr.measure(room=room), rr.on_triangle(room=room), rr.exited, pp)
+        touched_triangle = getattr(rr, "touched_triangle", False)
+        touched_wall = getattr(rr, "garra_touched_wall", False)
+        if ref is None:
+            return rr.measure(room=room), touched_triangle, touched_wall, rr.exited
         dist = rr.measure(room=room)
-        if dist > clearance_after_r3 and  dist < 4: dist = min(dist, ref[0])
-        if forward: return (dist, rr.on_triangle(room=room), rr.exited, pp)
-        return (dist, rr.on_triangle(room=room, dx=d[0], dy=d[1]), rr.exited, pp)
+        if dist > clearance_after_r3 and dist < 4:
+            dist = min(dist, ref[0])
+        return dist, touched_triangle, touched_wall, rr.exited
     return mm
 
 def update_r3_run_info(robot: r3_model_robot, info: r3_info, data: dict, action):
@@ -334,11 +329,11 @@ class algorithm:
         if isinstance(robot, r3_model_robot):
             measurement = measure(robot)(robot._room)
         else:
-            robot.update_async()
+            await robot.update_async()
             measurement = measure(robot)(None)
         if self.verbose:
             print("[r3_algorithm] Popping...")
-            print("[r3_algorithm] dist:", measurement[0], "triangle:", measurement[1], "exited:", measurement[2], "pushed:", measurement[3])
+            print("[r3_algorithm] dist:", measurement[0], "touched triangle:", measurement[1], "touched wall:", measurement[2], "exited:", measurement[3])
         matched = info.pop_from_measurement(measurement, measure(robot.copy()))
         if self.opening_book is not None:
             if not matched:

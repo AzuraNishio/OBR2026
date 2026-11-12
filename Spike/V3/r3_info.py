@@ -51,8 +51,9 @@ class r3_info:
                     elif kind == "free": # Consider not adding victims on triangle?
                         self.victim_map[y][x + 3] += victim_increment
 
-                    if room.is_triangle(xg - 1, y - 1):
-                        self.triangle_map[y][x + 3] += increment
+                    from V3.r3_model import descriptor_triangle_probability_at
+                    triangle_probability = descriptor_triangle_probability_at(descriptor, xg - 1, y - 1)
+                    self.triangle_map[y][x + 3] += increment * triangle_probability
 
         if self.verbose:
             print(" - [r3 info] Done!")
@@ -136,8 +137,16 @@ class r3_info:
     def pop_from_measurement(self, result, measurement):
         matching_descriptors = []
         room = r3_model("3x3", 0, 1)
+        touched_triangle = bool(result[1])
+        robot = getattr(measurement, "robot", None)
+        from V3.r3_model import descriptor_can_have_triangle_at
         for descriptor in self.room_descriptors:
             room_from_descriptor(descriptor, room)
+            if touched_triangle and robot is not None:
+                triangle_x = robot.x + room.offset + robot.last_dir[0]
+                triangle_y = robot.y + robot.last_dir[1]
+                if not descriptor_can_have_triangle_at(descriptor, triangle_x, triangle_y):
+                    continue
             if measurement(room, ref=result) == result:
                 matching_descriptors.append(descriptor)
         if not matching_descriptors:
@@ -200,8 +209,7 @@ class r3_info:
                     spread["exit"] += increment
                 elif kind == "free":
                     spread["victim"] += increment * 3 / room.free_area()
-                if room.is_triangle(x + room.offset, y):
-                    spread["triangle"] += increment
+                # Triangle layouts are not part of candidate room states.
             return spread
 
         s = {}

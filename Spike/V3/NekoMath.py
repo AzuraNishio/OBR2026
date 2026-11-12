@@ -74,72 +74,6 @@ def straight_move_vec_from_4_state_dir(dir):
 
 # ===================[ Sets, arrays and grid stuff ]===================
 
-class Counter(dict):
-    '''
-    Stripped down Counter from Collections. Mewo!
-    '''
-    # References:
-    #   http://en.wikipedia.org/wiki/Multiset
-    #   http://www.gnu.org/software/smalltalk/manual-base/html_node/Bag.html
-    #   http://www.demo2s.com/Tutorial/Cpp/0380__set-multiset/Catalog0380__set-multiset.htm
-    #   http://code.activestate.com/recipes/259174/
-    #   Knuth, TAOCP Vol. II section 4.6.3
-
-    def __init__(self, iterable=None, **kwds):
-        super().__init__()
-        if iterable is not None:
-            self.update(iterable)
-        if kwds:
-            self.update(kwds)
-
-    def __missing__(self, key):
-        'The count of elements not in the Counter is zero.'
-        # Needed so that self[missing_item] does not raise KeyError
-        return 0
-
-    def highest(self):
-        m = max(self.values())
-        for v in self.keys():
-            if self[v] == m:
-                return v
-
-    def highest_not(self, no):
-        m = 0
-        r = None
-        for v in self.keys():
-            if self[v] > m and v not in no:
-                m = self[v]
-                r = v
-        return r
-
-    def least(self):
-        m = min(self.values())
-        for v in self.keys():
-            if self[v] == m:
-                return v
-
-    def least_not(self, no):
-        m = 999999
-        r = None
-        for v in self.keys():
-            if self[v] < m and v not in no:
-                m = self[v]
-                r = v
-        return r
-
-    def copy(self):
-        'Return a shallow copy.'
-        return self.__class__(self)
-
-    def __reduce__(self):
-        return self.__class__, (dict(self),)
-
-    def __delitem__(self, elem):
-        'Like dict.__delitem__() but does not raise KeyError for missing values.'
-        if elem in self:
-            super().__delitem__(elem)
-
-
 
 def grid_max(g):
     if not isinstance(g, list) or isinstance(g, (str, bytes)):
@@ -153,17 +87,6 @@ def grid_sum(g):
 
     return sum(grid_sum(x) for x in g)
 
-def grid_mul(g, v):
-    if not isinstance(g, list) or isinstance(g, (str, bytes)):
-        return g * v
-
-    return [grid_mul(x, v) for x in g]
-
-def grid_pow(g, v):
-    if not isinstance(g, list) or isinstance(g, (str, bytes)):
-        return pow(g, v)
-
-    return [grid_pow(x, v) for x in g]
 
 def for_all_grid(g, f, co = None, depth = None):
     if not isinstance(g, list) or isinstance(g, (str, bytes)) or depth == 0:
