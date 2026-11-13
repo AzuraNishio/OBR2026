@@ -20,7 +20,7 @@ def connect_port_device(port: Port):
         pass
 
     try:
-        return ("Ultrasonic Sensor", Esp32SensorPack(port))
+        if port == Port.F: return ("Ultrasonic Sensor", Esp32SensorPack(port))
     except:
         pass
 

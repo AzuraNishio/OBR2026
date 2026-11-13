@@ -21,9 +21,35 @@
             }
         },
         {
+            "label": "size",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-NoProfile",
+                "-Command",
+                "$py = if (Test-Path .venv\\Scripts\\python.exe) { '.venv\\Scripts\\python.exe' } else { 'python' };",
+                "& $py -m pybricksdev compile Spike/__init__.py --bin > $env:TEMP\\obr_size.bin 2> $env:TEMP\\obr_size_err.txt;",
+                "if ($LASTEXITCODE -ne 0) { Write-Host 'COMPILE FAILED:'; Get-Content $env:TEMP\\obr_size_err.txt | Select-String 'Error|error' | Select-Object -First 5; exit 1 }",
+                "$size = (Get-Item $env:TEMP\\obr_size.bin).Length;",
+                "Write-Host ('');
+                Write-Host ('  COMPILED SIZE: ' + $size + ' / 52300 bytes  (' + [math]::Round($size / 52300 * 100, 1) + '%)  headroom: ' + (52300 - $size) + ' bytes');
+                Write-Host ('')"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "echo": false,
+                "reveal": "always",
+                "focus": false,
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
             "label": "build_oppening_book",
             "type": "shell",
-            "command": "python Spike/V3/r3_build_opening_book.py --depth 3 --information-weight 40",
+            "command": "python Spike/V3/r3_build_opening_book.py --depth 1 --information-weight 40",
             "options": {
                 "cwd": "${workspaceFolder}"
             },

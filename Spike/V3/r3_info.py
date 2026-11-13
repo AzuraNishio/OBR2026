@@ -16,6 +16,7 @@ class r3_info:
             self.room_descriptors = list(room_descriptors)
         self._exit_probability_map = None
         self._spread_valid = False
+        self.triangles = []
         self._update_room_probabilities()
 
 

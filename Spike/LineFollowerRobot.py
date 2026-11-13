@@ -25,7 +25,19 @@ class LineFollowerRobot:
         return await self.drive_base.straight(distance)
 
     async def turn(self, angle):
-        return await self.drive_base.turn(angle + copysign(1, angle))
+        if not self.r3_mode: await self.drive_base.turn(angle); return
+        self.drive_base.brake()
+        target = self.ctx.imu.heading() + angle
+        n = 0
+        while True:
+            error = target - self.ctx.imu.heading()
+            self.drive_base.drive(0, (5 * error) + (7 * sign(error)))
+            if abs(error) < 0.8:
+                n += 1
+
+            if n >  200:
+                break
+        self.drive_base.brake()
 
     def __init__(self, ctx: Context, L_sensor_port, R_sensor_port, L_motor_port, R_motor_port, wheel_diameter, wheel_distance, X_distance_CoR_sensor, Y_distance_CoR_sensor, R_motor_forward_direction = Direction.CLOCKWISE, L_motor_forward_direction = Direction.CLOCKWISE, esp32_sensor_pack = "E", garra_motor = "F"):
         self.garra_up = False
@@ -34,6 +46,7 @@ class LineFollowerRobot:
 
         self.R_motor_port = R_motor_port
         self.L_motor_port = L_motor_port
+        self.r3_mode = False
 
         self.ctx = ctx
 
@@ -128,6 +141,44 @@ class LineFollowerRobot:
 
     def is_forcing_motor(self, force):
         return abs(self.L_motor.load()) > force or abs(self.R_motor.load()) > force 
+
+
+    async def magic_r3_align(self, doRot = True, doDist = True):
+        if doRot:
+            last = await self.esp32_sensor_pack.laser_distance()
+            min_d = last
+            best_angle = 0
+            search_dir = 1
+            up = 0
+            while True:
+                dist = await self.esp32_sensor_pack.laser_distance()
+                last = dist
+                if min_d > dist:
+                    up += 1
+                    min_d = dist
+                    best_angle = self.ctx.imu.heading()
+                    
+                self.drive_base.drive(0, search_dir * 70)
+        
+                if dist - min_d > 6:
+                    if up > 2:
+                        self.brake()
+                        break
+                    else:
+                        await self.turn(10)
+                        dist = await self.esp32_sensor_pack.laser_distance()
+                        min_d = dist
+                        search_dir = -1
+                        up = 2
+        
+            await self.turn(best_angle - self.ctx.imu.heading())
+        if not doDist: return
+
+        dist = await self.esp32_sensor_pack.laser_distance() + 80
+        print(300 * floor(dist / 300))
+        tar = (300 * floor(dist / 300)) + 190
+        await self.straight(dist - tar)
+
 
     async def is_seeing_any_black(self):
         return await self.R_sensor.reflection() < 30 or await self.L_sensor.reflection() < 30

@@ -15,6 +15,7 @@ class r3_real_robot(r3_robot_interface):
         self.real_last_measurement = None
         self.move_queue = []
         self.is_on_triangle = False
+        self.touched_triangle  = False
         self.moves_since_align = 100
 
     def time(self):
@@ -37,12 +38,11 @@ class r3_real_robot(r3_robot_interface):
         self.robot.drive_base.use_gyro(True)
         await self.robot.garraUp()
         await self.robot.turn(90 * dir)
-        await self.robot.straight(10)
 
-        if (await self.robot.esp32_sensor_pack.laser_distance()) < 120 and self.moves_since_align > 4:
+        if (await self.robot.esp32_sensor_pack.laser_distance()) < 200 and self.moves_since_align > 4:
             self.moves_since_align = 0
-            await self.robot.straight(140)
-            await self.robot.straight(-50)
+            await self.robot.straight(240)
+            await self.robot.straight(-70)
 
     async def real_move(self, dir):      
         if dir == -1:

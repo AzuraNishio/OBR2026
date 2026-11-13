@@ -41,8 +41,8 @@ class r3_model_robot(r3_robot_interface):
             return False
 
         self.x, self.y = nx, ny
-        
-    
+
+
         if k in ("exit", "entrance"):
             self.exited = k
         return True
@@ -65,7 +65,7 @@ class r3_model_robot(r3_robot_interface):
             self.x, self.y = nx + dx, ny + dy
             self.touched_triangle = True
             return False
-        
+
         if k in ("exit", "entrance"):
             self.exited = k
         return True

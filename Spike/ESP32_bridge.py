@@ -22,6 +22,7 @@ class ESP32_bridge:
         self.unalt_map = {ALT_ALT_FLAG: ALT_FLAG, ALT_STOP_FLAG: STOP_FLAG}
         self.alt_map = {ALT_FLAG: [ALT_FLAG, ALT_ALT_FLAG], STOP_FLAG: [ALT_FLAG, ALT_STOP_FLAG]}
         self._avaiable = False
+        self._ready_count = -6
 
     def avaiable(self): return self._avaiable
 
@@ -33,13 +34,19 @@ class ESP32_bridge:
         self.packet_buffer[(self.active_packet + 1) % 8].append(byte)
 
     def _end_current_packet(self):
+        if self._ready_count < 6: self._ready_count += 1
+        
         self.is_alted = False
         self.active_packet = (self.active_packet + 1) % 8
         self.packet_buffer[(self.active_packet + 1) % 8] = []
         self._avaiable = True
 
-    async def tick_packet_receiver(self):
-        while self.device.waiting():
+    async def tick_packet_receiver_till_ready(self, new = None):
+        if new is not None: 
+            self.tick_packet_receiver_till_ready()
+            self._ready_count = -new
+
+        while self.device.waiting() or self._ready_count < 0:
             byte = (await self.device.read(1))[0]
             if self.is_alted:
                 self._write_to_packet_buffer(self.unalt_map.get(byte, 0x00))
@@ -68,20 +75,20 @@ class ESP32_distance_sensor(ESP32_bridge):
         super().__init__(port)
 
     async def distance(self):
-        await self.tick_packet_receiver()
+        await self.tick_packet_receiver_till_ready(new=2)
         if len(self.get_packet()) < 1: return 9999
         if len(self.get_packet()) > 0 and self.get_packet()[0] == 0: return 9999
         return (self.get_packet()[0] | (self.get_packet()[1] << 8))
 
     
     async def L_button_pressed(self):
-        await self.tick_packet_receiver()
+        await self.tick_packet_receiver_till_ready()
         if len(self.get_packet()) < 1: return 9999
         if len(self.get_packet()) > 0 and self.get_packet()[0] == 0: return 9999
-        return False # self.get_packet()[3] == 1
+        return self.get_packet()[3] == 1
 
     async def R_button_pressed(self):
-        await self.tick_packet_receiver()
+        await self.tick_packet_receiver_till_ready()
         if len(self.get_packet()) < 1: return 9999
         if len(self.get_packet()) > 0 and self.get_packet()[0] == 0: return 9999
         return self.get_packet()[4] == 1

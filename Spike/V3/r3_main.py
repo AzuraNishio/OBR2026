@@ -5,7 +5,6 @@ from V3.r3_real_robot import r3_real_robot
 async def run_room3(robot, ctx):
 
     robot.set_modified_straight_speed(room3_const.straight_speed)
-    await robot.straight(200)
     print("Running room 3!!")
 
     robot.drive_base.use_gyro(True)
@@ -16,7 +15,7 @@ async def run_room3(robot, ctx):
 
     while True:
         await interface.update_async()
-        await alg.measure()
+        await alg.measure_real()
         finished = alg.step()
         await interface.update_async()
         if finished: break

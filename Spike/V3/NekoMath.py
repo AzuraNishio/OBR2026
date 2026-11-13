@@ -49,19 +49,6 @@ def print_grid(grid: list, do_outline = True, print = True, square = True, min =
 
     if print: pp.print()
 
-def print_probabilitie_grid(grid: list, do_outline = True, print = True, square = True, min = 0):
-    m = grid_max(grid)
-    pp = PrettyPrint(box=True)
-    g = grid.copy()
-    g.reverse()
-    for row in g:
-        pp + "".join([grayscale_char(v / m, min = min) * (2 if square else 1) for v in row])
-
-    if print: pp.print()
-
-def clear_terminal():
-    # 'nt' means Windows, otherwise it assumes Linux/macOS
-    pass #os.system('cls' if os.name == 'nt' else 'clear')
 # ===================[ Grid direction stuff ]===================
 
 STEP_TUPLE_FROM_DIR = [(0, 1), (1, 0), (0, -1), (-1, 0)]
@@ -75,19 +62,6 @@ def straight_move_vec_from_4_state_dir(dir):
 # ===================[ Sets, arrays and grid stuff ]===================
 
 
-def grid_max(g):
-    if not isinstance(g, list) or isinstance(g, (str, bytes)):
-        return g
-
-    return max(grid_max(x) for x in g)
-
-def grid_sum(g):
-    if not isinstance(g, list) or isinstance(g, (str, bytes)):
-        return g
-
-    return sum(grid_sum(x) for x in g)
-
-
 def for_all_grid(g, f, co = None, depth = None):
     if not isinstance(g, list) or isinstance(g, (str, bytes)) or depth == 0:
             if co is None: return f(g)
@@ -95,23 +69,6 @@ def for_all_grid(g, f, co = None, depth = None):
     
     if co is None: return [for_all_grid(x, f,    depth= None if depth is None else (depth - 1)) for x in g]
     else         : return [for_all_grid(x, f, y, depth= None if depth is None else (depth - 1)) for x, y in zip(g, co)]
-
-def grid_neighbors(grid, coord, neighboorhood = STEP_TUPLE_FROM_DIR, default = 0):
-    out = []
-    for step in neighboorhood:
-        ax = grid
-        for dim, v in enumerate(step):
-            d_pos = coord[dim] + v
-            if d_pos < 0 or d_pos >= len(ax):
-                ax = default
-                break
-            
-            ax = ax[d_pos]
-
-        out.append(ax)
-
-    return out
-
 
 # ===================[ Combinatories and information theory stuff ]===================
 
@@ -135,23 +92,6 @@ def combinations(iterable, r):
             indices[j] = indices[j - 1] + 1
         yield tuple(pool[i] for i in indices)
 
-def possibilities(options, n):
-    if n == 1:
-        return [[v] for v in options]
-    else:
-        p = possibilities(options, n - 1)
-        new = []
-        for v in options:
-            for pp in p:
-                pp = pp.copy()
-                pp.append(v)
-                new.append(pp)
-        return new
-
-def entropy(counts):
-    n = sum(counts)
-    return -sum(c / n * log2(c / n) for c in counts if c)
-
 # ===================[ Math wrappers ]===================
 e = umath.e
 def pow(a, b):
@@ -159,9 +99,6 @@ def pow(a, b):
 
 def exp(p):
     return pow(e, p)
-
-def log2(x):
-    return umath.log2(x)
 
 def sigmoid(v, decay = 1):
     return 1 / (1 + exp(-v * decay))
@@ -172,3 +109,6 @@ def saturate(x, scale):
 
 def floor(v):
     return umath.floor(v)
+
+def sign(v):
+    return 1 if v > 0 else (-1 if v < 0 else 0)

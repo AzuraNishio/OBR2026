@@ -52,44 +52,9 @@ def action_from_key(key, robot: r3_model_robot, print = False, print_call = prin
         robot.turn_left()
     elif key == RIGHT:
         robot.turn_right()
-    
-    elif "+" in key or "-" in key:
-        if "+" in key: s = 1
-        else: s = -1
-
-        d = straight_move_vec_from_4_state_dir(robot.dir())
-        s += d[0]
-        s += d[1]
-
-        if s > 0:
-            robot.forward()
-            if print: print_call("forward")
-        else:
-            robot.backyard()
-            if print: print_call("backward")
-
-    elif "forward" in key:
-        robot.forward()
-        if print: print_call("forward")
-    
-    elif "left" in key:
-        robot.turn_left()
-        if print: print_call("left")
-        
-    elif "right" in key:
-        robot.turn_right()
-        if print: print_call("right")
-    
-    elif "backward" in key:
-        robot.backyard()
-        if print: print_call("backward")
-
-    pass
 
 def measure(rr):
     def mm(room: r3_model, ref = None):
-        rr._room = room
-        d = rr.last_dir
         touched_triangle = getattr(rr, "touched_triangle", False)
         touched_wall = getattr(rr, "garra_touched_wall", False)
         if ref is None:
@@ -208,6 +173,9 @@ def decision_policy_2(
                 new_robot = candidate_robot.copy(); new_robot.noclip = True
                 action_from_key(action, new_robot)
 
+                if action == BACKWARD:
+                    if (new_robot.x, new_robot.y) in info.triangles: continue
+
                 # Disallow movements into a known collider
                 if info.is_guaranteed_blocked(new_robot): continue
 
@@ -270,7 +238,6 @@ class algorithm:
         self.verbose = verbose
         self.render = render
         if self.verbose:
-            clear_terminal()
             print("Setupping r3_info...")
         self.info = r3_info(verbose=self.verbose)
         if self.render:
@@ -319,7 +286,7 @@ class algorithm:
         import gc
         gc.collect()
 
-    async def measure(self):
+    async def measure_real(self):
         if self.verbose:
             print("[r3_algorithm] Measuring...")
 
@@ -331,9 +298,15 @@ class algorithm:
         else:
             await robot.update_async()
             measurement = measure(robot)(None)
+            if robot.touched_triangle:
+                robot.straight_data(-1)
+                info.triangles.append((robot.x, robot.y))
+                robot.straight_data(1)
+
         if self.verbose:
             print("[r3_algorithm] Popping...")
             print("[r3_algorithm] dist:", measurement[0], "touched triangle:", measurement[1], "touched wall:", measurement[2], "exited:", measurement[3])
+        # The copy absorbs the re-measurement's time cost so the real robot's clock is untouched.
         matched = info.pop_from_measurement(measurement, measure(robot.copy()))
         if self.opening_book is not None:
             if not matched:
@@ -391,6 +364,7 @@ class algorithm:
             pp.line_break()
             pp + f"Expected delivered victims: {persistent_data["delivered_victims"]:.1f}; Expected onboard victims: {persistent_data["onboard_victims"]:.1f}"
             pp + f"Possible rooms: {len(info.room_descriptors)}"
+            pp + f"tt: {info.triangles}"
 
             pp.print()
 

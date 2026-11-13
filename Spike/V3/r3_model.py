@@ -32,10 +32,6 @@ OFFSET_MASK = 0x00C0
 OUTPUT_MASK = 0x0F00
 ROOM_SHAPES = ("3x3", "3x4", "4x3")
 ROOM_SHAPE_IDS = {"3x3": 0, "3x4": 1, "4x3": 2}
-ROOM_TRIANGLE_PAIRS = (
-    (0, 1), (0, 2), (2, 3), None,
-    (1, 2), (1, 3), (0, 3), None,
-)
 NO_OBSTACLE = (3, 3)
 
 
@@ -241,8 +237,10 @@ def descriptor_triangle_pairs(descriptor):
 
 
 def descriptor_triangle_probability_at(descriptor, x, y):
-    shape_id = (descriptor & SHAPE_MASK) >> 4
+    if y == 1: return 0
     offset = (descriptor & OFFSET_MASK) >> 6
+    if x + offset == 1: return 0 
+    shape_id = (descriptor & SHAPE_MASK) >> 4
     output = (descriptor & OUTPUT_MASK) >> 8
     obstacle_code = descriptor & OBSTACLE_MASK
     obstacle = None if obstacle_code == 0b1111 else (obstacle_code & 0b11, obstacle_code >> 2)

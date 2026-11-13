@@ -49,9 +49,11 @@ async def room3check(robot: LineFollowerRobot, ctx: Context):
             await robot.turn(-20)
             return
         await robot.turn(-20)
-        
+        await robot.straight(200)
 
+        robot.r3_mode = True
         await run_room3(robot, ctx)
+        robot.r3_mode = False
               
 
 

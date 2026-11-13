@@ -14,17 +14,6 @@ class r3_robot_interface:
         self.last_dir = (0, 0)
         self.log = []
 
-    # What a robot can know: pose in the entrance frame (starts 0,0,up).
-    def pose(self):
-        return self.x, self.y, self._dir
-
-    # Used by render()/debugging only.
-    def _x(self):
-        return self.x + self._room.offset
-
-    def _y(self):
-        return self.y
-
     def dir(self):
         return self._dir
 
@@ -33,10 +22,5 @@ class r3_robot_interface:
 
     def turn_left(self):
         self._turn(-1)
-
-    def kind(self, room=None):
-        if room is None:
-            room = self._room
-        return room.kind(self.x + room.offset, self.y)
 
 
