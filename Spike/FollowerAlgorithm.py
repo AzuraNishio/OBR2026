@@ -199,9 +199,9 @@ class FollowerAlgorithm:
         robot = self.robot
         l = line_follower_constants.obstacle_side
 
-        distance = await robot.esp32_sensor_pack.laser_distance()
+        pressed = await robot.esp32_sensor_pack.front_sensor_pressed()
 
-        if distance >= line_follower_constants.obstacle_trigger_dist:
+        if not pressed:
             return
         
         self.robot.brake()
@@ -211,37 +211,29 @@ class FollowerAlgorithm:
             await self.ctx.wait(6)
             await robot.signal_blink()
 
-        await robot.drive_base.straight(distance - 20)
-        await robot.drive_base.straight(-40)
 
         robot.drive_base.use_gyro(True)
-        await robot.drive_base.straight(-10)
+        await robot.drive_base.straight(-30)
 
         await robot.drive_base.turn(l * 90)
 
         await robot.drive_base.straight(-100)
         await robot.alignOnLinePerTime(3)
-        await robot.drive_base.straight(150)
+        await robot.drive_base.straight(300)
 
         while True:
             await robot.drive_base.turn(l * -90)
-            if await robot.esp32_sensor_pack.laser_distance() > 80:
-                await robot.drive_base.turn(l * 90)
-                await robot.drive_base.straight(110)
-                await robot.drive_base.turn(l * -90)
-                break
-            else:
-                await robot.drive_base.turn(l * 90)
-                await robot.drive_base.straight(60)
 
-        await robot.drive_base.straight(line_follower_constants.obstacle_parallel_dist)
-        await robot.drive_base.turn(l * -90)
-        await robot.drive_base.straight(40)
+            init_dist = robot.drive_base.distance()
+            finish = False
+            while abs(robot.drive_base.distance() - init_dist) < 400:
+                robot.drive_base.drive(100, 0)
+                finish = await robot.R_sensor.reflection() < 30
+                if finish: break
 
+            if finish: break
 
-        while await robot.R_sensor.reflection() > 30:
-            robot.drive_base.drive(100, 0)
-
+        await robot.alignOnLinePerTime(1.5)
         await robot.drive_base.straight(70)
         await robot.drive_base.turn(l * 90)
 

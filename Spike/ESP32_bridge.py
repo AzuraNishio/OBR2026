@@ -81,16 +81,16 @@ class ESP32_distance_sensor(ESP32_bridge):
         return (self.get_packet()[0] | (self.get_packet()[1] << 8))
 
     
-    async def L_button_pressed(self):
+    async def front_button_pressed(self):
         await self.tick_packet_receiver_till_ready()
-        if len(self.get_packet()) < 1: return 9999
-        if len(self.get_packet()) > 0 and self.get_packet()[0] == 0: return 9999
+        if len(self.get_packet()) < 4: return False
+        if len(self.get_packet()) > 0 and self.get_packet()[0] == 0: return False
         return self.get_packet()[3] == 1
 
-    async def R_button_pressed(self):
+    async def garra_button_pressed(self):
         await self.tick_packet_receiver_till_ready()
-        if len(self.get_packet()) < 1: return 9999
-        if len(self.get_packet()) > 0 and self.get_packet()[0] == 0: return 9999
+        if len(self.get_packet()) < 5: return False
+        if len(self.get_packet()) > 0 and self.get_packet()[0] == 0: return False
         return self.get_packet()[4] == 1
 
 
@@ -108,8 +108,11 @@ class Esp32SensorPack:
     async def laser_distance(self):
         return await self.sensor.distance() 
 
-    async def rear_sensor_pressed(self):
-        return await self.sensor.L_button_pressed()
+    async def front_sensor_pressed(self):
+        return await self.sensor.front_button_pressed()
+
+    async def garra_sensor_pressed(self):
+        return await self.sensor.garra_button_pressed()
 
     def distance_sinc(self):
         return self.sensor.sinc_distance()

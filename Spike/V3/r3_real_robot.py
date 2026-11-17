@@ -71,7 +71,7 @@ class r3_real_robot(r3_robot_interface):
             if await self.robot.is_seeing_any_black(): self.exited = 'exit'
             # if self.robot.is_seeing_any_silver(): self.exited = 'entrance'
 
-            if await self.robot.esp32_sensor_pack.rear_sensor_pressed():
+            if await self.robot.esp32_sensor_pack.front_sensor_pressed():
                 self.garra_touched_wall = True
                 self.robot.drive_base.brake()
                 await self.robot.garraUp()
