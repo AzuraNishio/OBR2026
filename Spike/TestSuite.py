@@ -5,7 +5,7 @@ from LineFollowerRobot import LineFollowerRobot
 from V3.NekoMath import *
 
 def isTest():
-    return True  
+    return False  
 
 
 async def test_suite(ctx: Context, robot: LineFollowerRobot, model):

@@ -184,7 +184,7 @@ void loop() {
 
     uint16_t distance = sensor.read();
 
-    byte packet[4];
+    byte packet[6];
     float r = 0;
     float b = 0;
     byte rear_button_L = 0x00;
@@ -193,14 +193,14 @@ void loop() {
     if (digitalRead(rear_button_pin_L) == LOW){
       Serial.print("L-on  "); 
       rear_button_L = 0x01; 
-      r = 0.3;
+      r = 0.4;
     } else {
       Serial.print("L-off ");
     }
     if (digitalRead(rear_button_pin_R) == LOW){
       Serial.println("R-on"); 
       rear_button_R = 0x01; 
-      b = 0.3;
+      b = 0.9;
     } else {
       Serial.println("R-off");
     }
@@ -212,10 +212,11 @@ void loop() {
         packet[2] = 0x01; // TIMEOUT
         packet[3] = rear_button_L;
         packet[4] = rear_button_R;
+        packet[5] = 0x00;
 
         Serial.println("TIMEOUT");
 
-        send_packet(packet, 5);
+        send_packet(packet, 6);
         restart_distance_sensor();
     }
     else {
@@ -226,10 +227,11 @@ void loop() {
         packet[2] = 0x00; // VALID
         packet[3] = rear_button_L;
         packet[4] = rear_button_R;
+        packet[5] = 0x00;
 
         //Serial.println(distance);
 
-        send_packet(packet, 5);
+        send_packet(packet, 6);
     }
     //rgb.log(float(int(packetBuffer[(packetBufferIndex + 7) % 8][0])) / 254, float(int(packetBuffer[(packetBufferIndex + 7) % 8][1])) / 254, float(int(packetBuffer[(packetBufferIndex + 7) % 8][2])) / 254)
     
@@ -237,7 +239,7 @@ void loop() {
     tick_listener();
     if (is_packet_new){
       is_packet_new = false;
-      send_packet(packetBuffer[(packetBufferIndex + 7) % 8], 10);
+      //send_packet(packetBuffer[(packetBufferIndex + 7) % 8], 10);
       rgb_log(0, 0, 1);
       delay(1000);
     }
