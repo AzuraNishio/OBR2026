@@ -298,10 +298,10 @@ class LineFollowerRobot:
 
             R = await self.R_sensor.reflection()
             L = await self.L_sensor.reflection()
-            error = (R - L)
+            error = (R - L) + 3
             derivative = (error - last_error)  / dt
             last_error = error
             b = 1 if abs(error) > 6 else 0
-            self.drive_base.drive((R + L - (black_threshold * 2)) * speedK / (abs(error) + 1) * p, -k * error - (derivative) * p * b) 
+            self.drive_base.drive((R + L - (black_threshold * 2)) * speedK / (abs(error) + 1) * p, 0.6 * (-k * error - (derivative) * p * b)) 
         self.drive_base.hold()
         self.drive_base.use_gyro(True)
