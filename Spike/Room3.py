@@ -49,31 +49,111 @@ async def room3check(robot: LineFollowerRobot, ctx: Context):
             await robot.turn(-20)
             return
         await robot.turn(-20)
-        await robot.straight(200)
 
 
         robot.r3_mode = True
-        while True:
-            dist = await robot.esp32_sensor_pack.laser_distance()
-            error = 40 - dist
-            c = error * 0.1
-            robot.drive(300, c)
 
-            if robot.is_seeing_any_black():
-                break
+        await robot.garraUp()
+        await robot.straight(200)
+
+
+        if await robot.esp32_sensor_pack.laser_distance() < 260:
+            await robot.turn(90)
+            await robot.straight(150)
+            await robot.garraDown()
+
+            await robot.straight(-400)
+        else:    
+            await robot.turn(180)
+
+            await robot.straight(100)
+            await robot.garraDown()
+            await robot.straight(-400)
+
+        ctx.imu.reset_heading(0)
+
+        n = 0
+        
+        while True:
+
+            robot.drive(-100, 0)
+            dist = await robot.esp32_sensor_pack.laser_distance_safe()
+            
+
+            if await robot.is_seeing_any_black():
+                if n == 2:
+                    await robot.garraUp()
+                    await robot.turn(90)
+                    await robot.straight(-60)
+                    await robot.turn(90)
+                    break
+                else:
+                    n += 1
+                    await robot.garraUp()
+                    await robot.straight(300)
+                    await robot.turn(90)
+
+
+            if abs(ctx.imu.heading()) > 5:
+                await robot.straight(10)
+                await robot.drive_base.curve(-270, -90 - ctx.imu.heading())
+                await robot.straight(-40)
+                await robot.garraUp()
+                await robot.turn(90)
+                await robot.straight(-250)
+                await robot.turn(-45)
+                await robot.garraDown()
+                await robot.straight(450)
+                await robot.garraUp()
+                await robot.straight(-100)
+                await robot.garraDown()
+                await robot.straight(300)
+                await robot.straight(-300)
+                await robot.garraUp()
+                await robot.turn(45)
+                await robot.straight(300)
+                await robot.turn(-90)
+                ctx.imu.reset_heading(0)
+                await robot.garraDown()
+                continue
+            
 
             if await robot.esp32_sensor_pack.garra_sensor_pressed():
-                await robot.straight(-20)
+                print("front")
+                await robot.straight(20)
+                await robot.garraUp()
+                await robot.straight(-120)
                 await robot.turn(90)
+                ctx.imu.reset_heading(0)
+                dist = await robot.esp32_sensor_pack.laser_distance()
+
+                await robot.garraDown()
                 await robot.straight(-160)
 
-            elif dist > 150:
-                await robot.straight(-160)
-                await robot.turn(-90)
+            elif dist > 900:
+                if n == 2:
+                    print("long")
+                    await robot.garraUp()
+                    await robot.turn(90)
+                    ctx.imu.reset_heading(0)
+                    await robot.straight(-160)
+                    break
+                else:
+                    n += 1
+                    await robot.straight(-300)
+                    
+            elif dist > 300:
+                print("yelp")
+
+                await robot.straight(-180)
+                await robot.garraUp()
+                await robot.straight(-120)
+                await robot.turn(90)
+                ctx.imu.reset_heading(0)
+                await robot.garraDown()
                 await robot.straight(-160)
             
         robot.r3_mode = False
-
 
         #await run_room3(robot, ctx)
               
