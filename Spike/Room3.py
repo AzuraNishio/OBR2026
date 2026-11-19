@@ -12,7 +12,7 @@ from libs.AwareRobotics.AwDriveBase import *
 from LineFollowerRobot import LineFollowerRobot
 from Scaffolding import *
 from math import *
-from V3.r3_main import run_room3
+#from V3.r3_main import run_room3
 
 
 async def beep_n(robot: LineFollowerRobot, times):
@@ -51,9 +51,31 @@ async def room3check(robot: LineFollowerRobot, ctx: Context):
         await robot.turn(-20)
         await robot.straight(200)
 
+
         robot.r3_mode = True
-        await run_room3(robot, ctx)
+        while True:
+            dist = await robot.esp32_sensor_pack.laser_distance()
+            error = 40 - dist
+            c = error * 0.1
+            robot.drive(300, c)
+
+            if robot.is_seeing_any_black():
+                break
+
+            if await robot.esp32_sensor_pack.garra_sensor_pressed():
+                await robot.straight(-20)
+                await robot.turn(90)
+                await robot.straight(-160)
+
+            elif dist > 150:
+                await robot.straight(-160)
+                await robot.turn(-90)
+                await robot.straight(-160)
+            
         robot.r3_mode = False
+
+
+        #await run_room3(robot, ctx)
               
 
 

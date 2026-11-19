@@ -1,0 +1,5483 @@
+﻿
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\constants.py
+========================================
+
+class line_follower_constants:
+
+    # Maximum linear speed for the sensor in mm/s
+    max_sensor_linear_speed = 160
+
+    # Reduced linear speed for the sensor for more precise control in mm/s
+    sensor_reduced_linear_speed = 80
+
+    # Duration for the sensor linear speed ramp-up and ramp-down
+    sensor_linear_speed_ramp_duration = 0.5
+
+    # Constants for the gap check maneuver in mm
+    gap_check_distance = 250
+    do_gap_save = False
+
+    do_knock_down_save = False
+
+    # Minimum value for the silver detection in %
+    silver_min_threshold = 95
+
+    # Side to go around the obstacle, -1 for left, 1 for right
+    obstacle_side = -1
+    do_obstacle = True
+    obstacle_parallel_dist = 450
+    obstacle_trigger_dist = 60
+
+    # PD controller coefficients
+    KP = 4.0
+    KD = 1.0
+    KD2 = 0.1
+
+    # Line follower bias to compensate for sensor misalignment or other factors
+    bias = -4
+
+
+class room3_const:
+    U = 300
+    straight_speed = 430
+    straight_to_wall_torque_threshold = 160 
+    straight_till_speed = 200
+    triangle_angle_threshold = 6
+    triangle_single_motor_torque = 100
+
+class surprises:
+    signal_on_obstacle = False
+    signal_on_room3 = False
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\ESP32_bridge.py
+========================================
+
+from pybricks.hubs import PrimeHub
+from pybricks.iodevices import UARTDevice
+from pybricks.parameters import Port
+from umath import *
+from pybricks.pupdevices import Motor, ColorSensor, UltrasonicSensor
+
+
+
+ALT_FLAG      = 0xA0;
+STOP_FLAG     = 0xA5;
+ALT_ALT_FLAG  = 0xA1;
+ALT_STOP_FLAG = 0xA6;
+
+
+class ESP32_bridge:
+    def __init__(self, port):
+        self.port = port
+        self.device = UARTDevice(port, baudrate=115200, power_pin=1)
+        self.packet_buffer = [[] for _ in range(8)]
+        self.active_packet = 0
+        self.is_alted = False
+        self.unalt_map = {ALT_ALT_FLAG: ALT_FLAG, ALT_STOP_FLAG: STOP_FLAG}
+        self.alt_map = {ALT_FLAG: [ALT_FLAG, ALT_ALT_FLAG], STOP_FLAG: [ALT_FLAG, ALT_STOP_FLAG]}
+        self._avaiable = False
+
+    def avaiable(self): return self._avaiable
+
+    def get_packet(self):
+        self._avaiable = False
+        return self.packet_buffer[self.active_packet]
+
+    def _write_to_packet_buffer(self, byte):
+        self.packet_buffer[(self.active_packet + 1) % 8].append(byte)
+
+    def _end_current_packet(self):
+        self.is_alted = False
+        self.active_packet = (self.active_packet + 1) % 8
+        self.packet_buffer[(self.active_packet + 1) % 8] = []
+        self._avaiable = True
+
+    async def tick_packet_receiver(self):
+        while self.device.waiting():
+            byte = (await self.device.read(1))[0]
+            if self.is_alted:
+                self._write_to_packet_buffer(self.unalt_map.get(byte, 0x00))
+                self.is_alted = False
+            else:
+                if byte == ALT_FLAG:
+                    self.is_alted = True
+                elif byte == STOP_FLAG:
+                    self._end_current_packet()
+                else:
+                    self._write_to_packet_buffer(byte)
+
+#    def send_packet(self, packet):
+#        encoded = []
+#
+#        for b in packet:
+#            encoded.extend(self.alt_map.get(b, [b]))
+#
+#        encoded.append(STOP_FLAG)
+#
+#        self.device.write(bytes(encoded))
+
+
+class ESP32_distance_sensor(ESP32_bridge):
+    def __init__(self, port):
+        super().__init__(port)
+
+    async def distance(self):
+        await self.tick_packet_receiver()
+        if len(self.get_packet()) < 1: return 9999
+        if len(self.get_packet()) > 0 and self.get_packet()[0] == 0: return 9999
+        return (self.get_packet()[0] | (self.get_packet()[1] << 8))
+
+    
+    async def L_button_pressed(self):
+        await self.tick_packet_receiver()
+        if len(self.get_packet()) < 1: return 9999
+        if len(self.get_packet()) > 0 and self.get_packet()[0] == 0: return 9999
+        return False # self.get_packet()[3] == 1
+
+    async def R_button_pressed(self):
+        await self.tick_packet_receiver()
+        if len(self.get_packet()) < 1: return 9999
+        if len(self.get_packet()) > 0 and self.get_packet()[0] == 0: return 9999
+        return self.get_packet()[4] == 1
+
+
+# TODO: prevent eternal pulling and buffer buildup. Make a bg process
+class Esp32SensorPack:
+    def __init__(self, port):
+        try:
+            self.sensor = UltrasonicSensor(port)
+        except:
+            try:
+                ColorSensor(port)
+            except:                    
+                self.sensor = ESP32_distance_sensor(port)
+
+    async def laser_distance(self):
+        return await self.sensor.distance() 
+
+    async def rear_sensor_pressed(self):
+        return await self.sensor.L_button_pressed()
+
+    def distance_sinc(self):
+        return self.sensor.sinc_distance()
+
+
+def init():
+    dist_sensor = Esp32SensorPack(Port.F)
+    while True:
+        for i in range(1):
+            print(f"{(dist_sensor.distance_sinc() or 0) / 10:.0f}")
+
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\FailHandler.py
+========================================
+
+from pybricks import *
+from pybricks.hubs import *
+from pybricks import *
+from pybricks.iodevices import *
+from pybricks.robotics import *
+from pybricks.hubs import *
+from pybricks.pupdevices import *
+from libs.Utills import *
+from libs.Exceptions import * 
+from libs.AwareRobotics.AwDriveBase import *
+
+class FailHandler:
+    def __init__(self):
+        self.ctx = None
+        self.display_state = ""
+
+    def bindContext(self, ctx):
+        self.ctx = ctx
+    
+    def exception(self, e: Exception):
+        print(f"[ Error while {self.ctx.state}! ]")
+        self.ctx.hub_info_dump()
+
+        if isinstance(e, PortError):
+            self.ctx.display.char(e.port)
+            print(f"Port error in {e.port}! {e}")  
+        else:
+            print(e)
+
+        raise e
+    
+    def stuck_while_driving(self, base, state: str, time: int):
+        if time > 500:
+            print(state)
+            if state == "left":
+                self.display_state = """9....9....9....9....9...."""
+            elif state == "right":
+                self.display_state = """....9....9....9....9....9"""
+            else:
+                self.display_state = """9...99...99...99...99...9"""
+        
+    
+    def refresh_display(self):
+        if self.display_state != "":
+            self.ctx.show_string_encoded_img(self.display_state)
+        self.display_state = ""
+        
+
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\FollowerAlgorithm.py
+========================================
+
+from pybricks import *
+from pybricks.hubs import *
+from pybricks import *
+from pybricks.iodevices import *
+from pybricks.robotics import *
+from pybricks.hubs import *
+from pybricks.parameters import *
+from libs.Utills import *
+from Scaffolding import *
+from LineFollowerRobot import *
+from Model import *
+from umath import *
+from libs.AwareRobotics.AwDriveBase import *
+from Room3 import room3check
+from constants import *
+
+class FollowerAlgorithm:
+    def __init__(self, ctx: Context, model: TreadmilDifferentialDriveRobotModel, robot: LineFollowerRobot):
+        self.ctx = ctx
+        self.robot = robot
+        self.model = model
+
+    # region Setup
+
+    def setup(self):
+        ctx = self.ctx
+        robot = self.robot
+        model = self.model
+
+        ctx.imu.reset_heading(0)
+
+        self.R_green_counter = 0
+        self.L_green_counter = 0
+        self.tps = 500
+        self.tps_counter = 0
+        self.last_tps_check = ctx.time()
+        # initialize sensor linear speed to configured max
+        self.sensor_linear_speed = line_follower_constants.max_sensor_linear_speed
+
+        # runtime state
+        # `sensor_linear_speed` initialized to configured max
+
+        self.last_time = self.ctx.time()
+        self.lastCheck = 0
+        self.last_error = 0
+        self.last_derivative = 0
+        self.garra_was_down = False
+
+        #robot.drive_base.use_gyro(True)
+
+    # endregion
+
+    # region Main Loop
+
+    async def tick(self):
+        self.tps_counter += 1
+        dT = self.ctx.time() - self.last_time
+        self.last_time = self.ctx.time()
+        if (0.5 < self.ctx.time() - self.last_tps_check):
+            self.tps = ((self.tps_counter * 2) + (self.tps * 4)) * 0.2
+            self.tps_counter = 0
+            self.last_tps_check = self.ctx.time()
+
+        await self.fuzzy_loop(max(0.1, dT))
+
+    def freeze_tps(self):
+        self.interval = self.ctx.time() - self.last_tps_check
+
+    def unfreeze_tps(self):
+        self.last_tps_check = self.ctx.time() - self.interval
+
+    async def fuzzy_loop(self, dT):
+        robot = self.robot
+
+        await wait(1)
+
+        R_reflection, L_reflection, darkest, R_green, L_green = await self.read_sensors()
+
+        self.update_green_counters(dT, R_green, L_green)
+
+        if line_follower_constants.do_knock_down_save:await self.handle_claw_tilt()
+
+        # Distance-based gap detection (replaces the old cruise-mode gap detection)
+        if line_follower_constants.do_gap_save: await self.handle_gap_detection()
+
+        if R_reflection < 50 or L_reflection < 50:
+            self.lastCheck = robot.drive_base.distance()
+
+        if line_follower_constants.do_obstacle: await self.handle_obstacle_avoidance()
+
+        if darkest > line_follower_constants.silver_min_threshold:
+            await room3check(robot, self.ctx)
+
+        if darkest < 11: # Check wether a sensor detected black. If so run green check and crossing check
+            self.freeze_tps()  # Freeze tick per second counter
+
+            # If either sensor has seen green less than 0.1 seconds ago, do green
+            if self.L_green_counter < 0.1 or self.R_green_counter < 0.1: 
+                await self.green()
+            else: # Else do center aligned manuever
+                await self.center_aligned_manuever(sign(L_reflection - R_reflection))
+
+            self.unfreeze_tps()
+
+        await self.line_follow_control(dT, R_reflection, L_reflection)
+
+    # endregion
+
+    # region Sensor Reading
+
+    async def read_sensors(self):
+        robot = self.robot
+
+        R_reflection = await robot.R_sensor.reflection()
+        L_reflection = await robot.L_sensor.reflection()
+
+        darkest = min(R_reflection, L_reflection)
+
+        R_green = await robot.R_sensor.color() == Color.GREEN
+        L_green = await robot.L_sensor.color() == Color.GREEN
+
+        return R_reflection, L_reflection, darkest, R_green, L_green
+
+    def update_green_counters(self, dT, R_green, L_green):
+        self.R_green_counter = 0 if R_green else min(20, self.R_green_counter + dT)
+        self.L_green_counter = 0 if L_green else min(20, self.L_green_counter + dT)
+
+    # endregion
+
+    # region Claw / Tilt Handling
+
+    async def handle_claw_tilt(self):
+        ctx = self.ctx
+        robot = self.robot
+
+        if abs(ctx.imu.tilt()[0]) > 27:
+            if not self.garra_was_down:
+                self.garra_down_time = ctx.time()
+            self.garra_was_down = True
+
+            if not abs(ctx.time() - self.garra_down_time) > 2:
+                robot.garra_motor.run_time(5000, 1000)
+                await robot.drive_base.straight(70)
+            else:
+                await robot.garra_motor.run_time(-200, 1000)
+                await robot.drive_base.straight(70)
+        else:
+            self.garra_was_down = False
+            robot.garra_motor.run_time(-200, 1000)
+
+    # endregion
+
+    # region Gap Detection (distance based)
+
+    async def handle_gap_detection(self):
+        robot = self.robot
+
+        if robot.drive_base.distance() - self.lastCheck <= line_follower_constants.gap_check_distance:
+            return
+
+        robot.drive_base.use_gyro(True)
+        robot.drive_base.curve(0, 20)
+        isLine = False
+        while not robot.drive_base.done():
+            isLine = isLine or await robot.R_sensor.reflection() < 30 or await robot.L_sensor.reflection() < 30
+        robot.drive_base.brake()
+
+        if not isLine:
+            await robot.drive_base.curve(40, -10)
+            for i in range(4):
+                start_dist = robot.drive_base.distance()
+                while True:
+                    robot.drive(-500, 0)
+                    if abs(robot.drive_base.distance() - start_dist) > (10 + line_follower_constants.gap_check_distance) / 4:
+                        break
+                    if await robot.is_seeing_any_black():
+                        break
+
+                await robot.turn(-20)
+                bb = await robot.is_seeing_any_black()
+                await robot.turn(20)
+                if bb: break
+            await robot.turn(await robot.black_dir() * 6)
+            await robot.straight(-60)
+
+            
+        else:
+            await robot.drive_base.curve(0, -20)
+
+        robot.drive_base.use_gyro(False)
+
+        self.lastCheck = robot.drive_base.distance()
+
+    # endregion
+
+    # region Obstacle Avoidance
+
+    async def handle_obstacle_avoidance(self):
+        robot = self.robot
+        l = line_follower_constants.obstacle_side
+
+        distance = await robot.esp32_sensor_pack.laser_distance()
+
+        if distance >= line_follower_constants.obstacle_trigger_dist:
+            return
+        
+        self.robot.brake()
+
+        # Surprise challenge (ignore)
+        if surprises.signal_on_obstacle:
+            await self.ctx.wait(6)
+            await robot.signal_blink()
+
+        await robot.drive_base.straight(distance - 20)
+        await robot.drive_base.straight(-40)
+
+        robot.drive_base.use_gyro(True)
+        await robot.drive_base.straight(-10)
+
+        await robot.drive_base.turn(l * 90)
+
+        await robot.drive_base.straight(-100)
+        await robot.alignOnLinePerTime(3)
+        await robot.drive_base.straight(150)
+
+        while True:
+            await robot.drive_base.turn(l * -90)
+            if await robot.esp32_sensor_pack.laser_distance() > 80:
+                await robot.drive_base.turn(l * 90)
+                await robot.drive_base.straight(110)
+                await robot.drive_base.turn(l * -90)
+                break
+            else:
+                await robot.drive_base.turn(l * 90)
+                await robot.drive_base.straight(60)
+
+        await robot.drive_base.straight(line_follower_constants.obstacle_parallel_dist)
+        await robot.drive_base.turn(l * -90)
+        await robot.drive_base.straight(40)
+
+
+        while await robot.R_sensor.reflection() > 30:
+            robot.drive_base.drive(100, 0)
+
+        await robot.drive_base.straight(70)
+        await robot.drive_base.turn(l * 90)
+
+        robot.drive_base.use_gyro(False)
+        self.lastCheck = robot.drive_base.distance()
+
+    # endregion
+
+    # region Green Crossing Handling
+
+    async def green(self):
+        robot = self.robot
+
+        # Check side; 1 if right, 0 if 180, -1 if left
+        side = (1 if self.R_green_counter < 0.1 else 0) - (1 if self.L_green_counter < 0.1 else 0)
+        if side > 0:
+            pro_line_sensor = robot.R_sensor
+            retro_line_sensor = robot.L_sensor
+        else:
+            pro_line_sensor = robot.L_sensor
+            retro_line_sensor = robot.R_sensor
+
+        print(f"green! {side}")
+
+        # First of all brake
+        robot.drive_base.brake()
+
+        robot.drive_base.use_gyro(True)
+        # After braking, move forward 70 mm
+        await robot.drive_base.straight(70)
+
+        if side == 0:  # If 180 them turn 170
+            await robot.drive_base.curve(0, -90)
+            await robot.straight(15)
+            await robot.drive_base.curve(0, -80)
+            side = -1  # Sets side to -1 so turn till line works
+        else:  # Else turn 80 in the direction
+            await robot.drive_base.curve(0, 60 * side)
+
+        # Afterwards keep turning untill it finds the line
+        await self._green_turn_until_line(pro_line_sensor, retro_line_sensor, side)
+
+        robot.drive_base.brake()
+
+        robot.drive_base.use_gyro(False)
+
+    async def _green_turn_until_line(self, pro_line_sensor, retro_line_sensor, side):
+        robot = self.robot
+
+        skip = False
+        flip = False
+        start_angle = self.ctx.imu.heading()
+        while True and not skip:  # Loop until skip
+            robot.drive_base.drive(0, side * 140)  # Just turn in the direction of the line
+            if await pro_line_sensor.reflection() < 21:
+                while True:
+                    robot.drive_base.drive(0, side * 40)
+
+                    if await pro_line_sensor.reflection() > 21:
+                        if await retro_line_sensor.reflection() > 21:
+                            skip = True
+                            break
+                        else:
+                            robot.drive_base.curve(0, side * -4)
+            elif await retro_line_sensor.reflection() < 21:
+                while True:
+                    robot.drive_base.drive(0, side * -40)
+
+                    if await retro_line_sensor.reflection() > 21:
+                        if await pro_line_sensor.reflection() > 21:
+                            skip = True
+                            break
+                        else:
+                            robot.drive_base.curve(0, side * 4)
+
+            if abs(self.ctx.imu.heading() - start_angle) > 50:
+                flip = True
+                await robot.drive_base.turn(side * -40)
+                break
+
+        if flip:
+            await self._green_turn_until_line(retro_line_sensor, pro_line_sensor, -side)
+
+    # endregion
+
+    # region Line Follow Control
+
+    async def line_follow_control(self, dT, R_reflection, L_reflection):
+        ctx = self.ctx
+        robot = self.robot
+        model = self.model
+
+        # Robot turning speed
+        turning_speed = ctx.imu.angular_velocity(vector(0, 0, 1))
+
+        # Calculate turning rate from error
+        error = L_reflection - R_reflection + line_follower_constants.bias
+        derivative = (error - self.last_error) / dT
+        second_derivative = (derivative - self.last_derivative) / dT
+        self.last_error = error
+        self.last_derivative = derivative
+
+        # PD controller using gains from constants
+        turn_rate = (error * line_follower_constants.KP) + (derivative * line_follower_constants.KD) + (second_derivative * line_follower_constants.KD2)
+
+        if abs(turn_rate) < 10:
+            turn_rate = 0
+
+        sensor_linear_speed = self._ramp_linear_speed(dT)
+
+        # Calculate maximum turn rate
+        max_turn_rate = sensor_linear_speed / model.sensor_turn_rate_to_linear
+
+        # If too fast, clamp turn rate
+        turn_rate = clamp(max_turn_rate, -max_turn_rate, turn_rate)
+
+        # Calculate sideways sensor speed and planned sideways sensor speed
+        sideways_sensor_speed = model.sensor_turn_rate_to_linear * turning_speed
+        planed_sideways_sensor_speed = model.sensor_turn_rate_to_linear * turn_rate
+
+        # Afterwards calculate linear speed accordingly to sideways planned and real sensor speed to keep sensor under speed limit
+        linear = sensor_linear_speed - max(abs(sideways_sensor_speed), abs(planed_sideways_sensor_speed))
+
+        robot.drive_base.drive(linear, turn_rate)
+
+    def _ramp_linear_speed(self, dT):
+        sensor_linear_speed = self.sensor_linear_speed
+        if self.sensor_linear_speed < line_follower_constants.max_sensor_linear_speed:
+            self.sensor_linear_speed += dT * line_follower_constants.max_sensor_linear_speed / line_follower_constants.sensor_linear_speed_ramp_duration
+        else:
+            self.sensor_linear_speed = line_follower_constants.max_sensor_linear_speed
+        return sensor_linear_speed
+
+    # endregion
+
+    # region Center Aligned Manuever
+
+    async def center_aligned_manuever(self, dir):
+        self.sensor_linear_speed = line_follower_constants.sensor_reduced_linear_speed
+        print("Center aligned manuever")
+        robot = self.robot
+
+        await robot.drive_base.straight(5)
+        if self.robot.R_sensor.color() == Color.BLACK and self.robot.L_sensor.color() == Color.BLACK:
+            robot.drive_base.straight(20)
+            return
+
+        if dir < 0:
+            pro_line_sensor = robot.L_sensor
+            ret_line_sensor = robot.R_sensor
+        else:
+            pro_line_sensor = robot.R_sensor
+            ret_line_sensor = robot.L_sensor
+
+        skip, pro_line_width, ret_line_width = await self._center_align_rotation(dir, pro_line_sensor, ret_line_sensor)
+
+        print(f"Pro line: {pro_line_width}mm, ret line: {ret_line_width}mm")
+
+        if not skip:
+            await self._center_turn_until_line(dir, pro_line_sensor, ret_line_sensor)
+
+    async def _center_align_rotation(self, dir, pro_line_sensor, ret_line_sensor):
+        robot = self.robot
+
+        # Step to align CoR
+        robot.drive_base.curve(110, -25 * dir, wait=False)
+
+        last_dist = robot.drive_base.distance()
+
+        pro_line_width = 0
+        ret_line_width = 0
+
+        post_line = 0
+
+        skip = False
+
+        while not robot.drive_base.done():
+            dP = robot.drive_base.distance() - last_dist
+            last_dist = robot.drive_base.distance()
+            if await pro_line_sensor.reflection() < 8:
+                pro_line_width += dP
+            if await ret_line_sensor.reflection() < 8:
+                ret_line_width += dP
+
+            if pro_line_width > 7 and ret_line_width > 7:
+                robot.drive_base.stop()
+                skip = True
+                break
+
+            if pro_line_width > 7:
+                post_line += dP
+
+            if post_line > 20:
+                break
+
+        return skip, pro_line_width, ret_line_width
+
+    async def _center_turn_until_line(self, dir, pro_line_sensor, ret_line_sensor):
+        robot = self.robot
+
+        init_angle = robot.drive_base.angle()
+        skip = False
+
+        while True and not skip:  # Loop until skip
+            robot.drive_base.drive(0, dir * 140)  # Just turn in the direction of the line
+
+            if abs(robot.drive_base.angle() - init_angle) > 160:  # If has turned more than 160 degrees
+                dir *= -1  # Them flip direction
+                await robot.drive_base.turn(dir * 70)  # Turn untill its kinda of aligned to the line
+                await robot.drive_base.straight(-9)  # Move back 9 mm
+                while abs(robot.drive_base.angle() - init_angle) > 160:  # And rotate untill it has undone 20 degrees of its rotation
+                    robot.drive_base.drive(0, dir * 140)
+
+            if await pro_line_sensor.reflection() < 21:  # Found line with pro line sensor: spin untill pro line has passed, then set skip
+                while True:
+                    robot.drive_base.drive(0, dir * 70)
+
+                    if await pro_line_sensor.reflection() > 21:
+                        skip = True
+                        break
+
+            if await ret_line_sensor.reflection() < 21:  # Found line with retro line: spin opposite untill exited line, then set skip
+                while True:
+                    robot.drive_base.drive(0, dir * -70)
+
+                    if await ret_line_sensor.reflection() > 21:
+                        skip = True
+                        break
+
+    # endregion
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\LineFollowerRobot.py
+========================================
+
+from pybricks import *
+from pybricks.hubs import *
+from pybricks import *
+from pybricks.iodevices import *
+from pybricks.robotics import *
+from pybricks.hubs import *
+from pybricks.parameters import *
+from libs.Utills import *
+from libs.AwareRobotics.AwDriveBase import *
+from Scaffolding import *
+from libs.Exceptions import *
+from constants import *
+
+class LineFollowerRobot:
+    def __getattr__(self, name):
+        """Forward attributes not defined here to the drive base."""
+        return getattr(self.drive_base, name)
+
+    async def straight(self, distance, speed = None):
+        if not speed is None:
+            self.drive_base.settings(straight_speed = speed)
+        else:
+            self.drive_base.settings(straight_speed = self.modified_straight_speed or self.default_straight_speed, straight_acceleration= 700)
+
+        return await self.drive_base.straight(distance)
+
+    async def turn(self, angle):
+        return await self.drive_base.turn(angle + copysign(1, angle))
+
+    def __init__(self, ctx: Context, L_sensor_port, R_sensor_port, L_motor_port, R_motor_port, wheel_diameter, wheel_distance, X_distance_CoR_sensor, Y_distance_CoR_sensor, R_motor_forward_direction = Direction.CLOCKWISE, L_motor_forward_direction = Direction.CLOCKWISE, esp32_sensor_pack = "E", garra_motor = "F"):
+        self.garra_up = False
+        # Keep trying to connect
+        self.animTime = ctx.time()
+
+        self.R_motor_port = R_motor_port
+        self.L_motor_port = L_motor_port
+
+        self.ctx = ctx
+
+        while True:
+            try:
+                self.R_motor:Motor = ctx.get_port_of_type(R_motor_port, Motor)
+                self.L_motor:Motor = ctx.get_port_of_type(L_motor_port, Motor)
+                self.garra_motor:Motor = ctx.get_port_of_type(garra_motor, Motor)
+                self.R_sensor:ColorSensor = ctx.get_port_of_type(R_sensor_port, ColorSensor)
+                self.L_sensor:ColorSensor = ctx.get_port_of_type(L_sensor_port, ColorSensor)
+                self.esp32_sensor_pack:Esp32SensorPack = ctx.get_port_of_type(esp32_sensor_pack, Esp32SensorPack)
+                #self.distance_sensor.lights.off()
+                break
+            except WrongPortError as e:
+                ctx.reload_empty_ports()
+
+                print(e)
+                
+                if ctx.time() - self.animTime < 1:
+                    ctx.indicate_port(e.port)
+                elif ctx.time() - self.animTime < 2:
+                    if e.found == "Nothing / Unknown":
+                        ctx.show_string_enxcoded_img(
+                            """ 9...9
+                                .9.9.
+                                ..9..
+                                .9.9.
+                                9...9"""
+                        )
+                    else:
+                        ctx.show_string_encoded_img(
+                            """ .99..
+                                9..9.
+                                ..9..
+                                .....
+                                ..9.."""
+                        )
+                else:
+                    self.animTime = ctx.time()
+
+            
+
+
+
+        try:
+            self.R_motor.close()
+            self.R_motor = Motor(get_port(R_motor_port), R_motor_forward_direction)
+        except Exception as e:
+            raise PortError(R_motor_port, e)
+
+        
+        try:
+            self.L_motor.close()
+            self.L_motor = Motor(get_port(L_motor_port), L_motor_forward_direction)
+        except Exception as e:
+            raise PortError(L_motor_port, e)
+
+        self.drive_base = AwDriveBase(self.L_motor, self.R_motor, wheel_diameter, wheel_distance, ctx)
+        self.wheel_diameter = wheel_diameter
+        self.wheel_distance = wheel_distance
+        self.X_distance_CoR_sensor = X_distance_CoR_sensor
+        self.Y_distance_CoR_sensor = Y_distance_CoR_sensor
+
+        self.drive_base.reset(0, 0)
+    
+        self.drive_base.distance_control.limits(acceleration= (1000, 3000))
+        self.drive_base.heading_control.limits(acceleration=1000)
+
+        linear_limits = self.drive_base.distance_control.limits()
+        heading_limits = self.drive_base.heading_control.limits()
+
+        print("Linear limits")
+        print(f"Maximum speed: {linear_limits[0]} mm/s, maximum acceleration: {linear_limits[1]} mm/sÂ², maximum torque: {linear_limits[2]} N*mm")
+        print("Turning limits")
+        print(f"Maximum speed: {heading_limits[0]} degrees/s, maximum acceleration: {heading_limits[1]} degrees/sÂ², maximum torque: {heading_limits[2]} N*mm")
+
+        self.drivingFor = 0;
+        self.shouldClear = False;
+        self.default_straight_speed = 250
+        self.modified_straight_speed = None
+    
+    def set_modified_straight_speed(self, speed):
+        self.modified_straight_speed = speed
+
+    async def signal_blink(self):
+        for i in range(4): 
+            self.esp32_sensor_pack.lights.on((100, 0, 100, 0))
+            await self.ctx.wait(0.125)
+            self.esp32_sensor_pack.lights.on((0, 100, 0, 100))
+            await self.ctx.wait(0.125)
+        self.esp32_sensor_pack.lights.off()
+
+    def is_forcing_motor(self, force):
+        return abs(self.L_motor.load()) > force or abs(self.R_motor.load()) > force 
+
+    async def is_seeing_any_black(self):
+        return await self.R_sensor.reflection() < 30 or await self.L_sensor.reflection() < 30
+
+    async def is_seeing_any_silver(self):
+        return await self.R_sensor.reflection() > line_follower_constants.silver_min_threshold or await self.L_sensor.reflection() > line_follower_constants.silver_min_threshold
+
+    async def black_dir(self):
+        return (1 if await self.R_sensor.reflection() < 30 else 0) - (1 if await self.L_sensor.reflection() < 30 else 0)
+
+    async def align_on_line_thingie(self, pro_line_sensor, retro_line_sensor, side):
+        skip = False
+        flip = False
+        start_angle = self.ctx.imu.heading()
+        while True and not skip:  # Loop until skip
+            self.drive_base.drive(0, side * 140)  # Just turn in the direction of the line
+            if await pro_line_sensor.reflection() < 21:
+                while True:
+                    self.drive_base.drive(0, side * 40)
+
+                    if await pro_line_sensor.reflection() > 21:
+                        if await retro_line_sensor.reflection() > 21:
+                            skip = True
+                            break
+                        else:
+                            self.drive_base.curve(0, side * -4)
+            elif await retro_line_sensor.reflection() < 21:
+                while True:
+                    self.drive_base.drive(0, side * -40)
+
+                    if await retro_line_sensor.reflection() > 21:
+                        if await pro_line_sensor.reflection() > 21:
+                            skip = True
+                            break
+                        else:
+                            self.drive_base.curve(0, side * 4)
+
+            if abs(self.ctx.imu.heading() - start_angle) > 60:
+                flip = True
+                await self.drive_base.turn(side * -50)
+                break
+
+        if flip:
+            await self.align_on_line_thingie(retro_line_sensor, pro_line_sensor, -side)
+
+    def clear_modified_straigth_speed(self):
+        self.modified_straight_speed = None
+
+    def integrityCheckTick(self):
+        self.drive_base()
+
+    async def garraDown(self):
+        if not self.garra_up: return
+        await self.drive_base.straight(10)
+        await self.garra_motor.run_time(1000, 1000)
+        self.garra_up = False
+
+
+    async def garraUp(self):
+        if self.garra_up: return
+        await self.drive_base.straight(10)
+        await self.garra_motor.run_time(-1000, 1300)
+        self.garra_up = True
+
+    async def driveUntillConditions(self, speed, turn, R_color=None, L_color=None,
+                                    L_reflection_less_than=0, R_reflection_less_than=0,
+                                    driven_distance=9999999, ultrasonic_less_than=0,
+                                    ultrasonic_more_than=9999999):
+        start_pos = self.drive_base.distance()
+
+        while True:
+            self.drive_base.drive(speed, turn)
+
+            if L_color is not None and await self.L_sensor.color() == L_color:
+                break
+
+            if R_color is not None and await self.R_sensor.color() == R_color:
+                break
+
+            if abs(start_pos - self.drive_base.distance()) >= driven_distance:
+                break
+
+            if await self.R_sensor.reflection() <= R_reflection_less_than:
+                break
+
+            if await self.L_sensor.reflection() <= L_reflection_less_than:
+                break
+
+            distance = await self.esp32_sensor_pack.laser_distance()
+            if distance <= ultrasonic_less_than:
+                break
+
+            if distance >= ultrasonic_more_than:
+                break
+        self.drive_base.brake()
+
+    async def move_time(self, time, speed = 500):
+        w = self.ctx.get_waiter(time)
+        while True:
+            self.drive_base.drive(speed, 0)
+            if w:
+                break
+        self.drive_base.brake()
+    
+    async def alignOnLinePerTime(self, time = 3, black_threshold = 30, k = 6, speedK = 6, doPreAlign = True):
+        ctx = self.ctx
+        self.drive_base.use_gyro(False)
+
+
+        start_align = ctx.time()
+        last_error = 0
+        last_time = ctx.time()
+        while ctx.time() - start_align < time:
+            p = min(1, 1.5 - ((ctx.time() - start_align) / time))
+            dt = max(0.02, ctx.time() - last_time)
+            last_time = ctx.time()
+
+            R = await self.R_sensor.reflection()
+            L = await self.L_sensor.reflection()
+            error = (R - L)
+            derivative = (error - last_error)  / dt
+            last_error = error
+            b = 1 if abs(error) > 6 else 0
+            self.drive_base.drive((R + L - (black_threshold * 2)) * speedK / (abs(error) + 1) * p, -k * error - (derivative) * p * b) 
+        self.drive_base.hold()
+        self.drive_base.use_gyro(True)
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\main.py
+========================================
+
+from pybricks import *
+from pybricks.hubs import *
+from pybricks import *
+from pybricks.iodevices import *
+from pybricks.robotics import *
+from pybricks.hubs import *
+from pybricks.parameters import *
+from libs.Utills import *
+from Scaffolding import *
+from LineFollowerRobot import *
+from Model import *
+from umath import *
+from FollowerAlgorithm import *
+from TestSuite import *
+from FailHandler import *
+
+ctx: Context
+fail_handler:FailHandler = FailHandler()
+ctx:Context = Context(fail_handler)
+
+
+def main():
+    global ctx
+    ctx.state = "Initializing robot"
+    robot = LineFollowerRobot( ctx,
+        L_sensor_port=      "C",
+        R_sensor_port=      "D",
+        L_motor_port=       "A",
+        R_motor_port=       "B",
+        esp32_sensor_pack = "F",
+        garra_motor       = "E",
+        wheel_diameter= 40,
+        wheel_distance= 110,
+        X_distance_CoR_sensor=60,
+        Y_distance_CoR_sensor=15,
+        L_motor_forward_direction=Direction.CLOCKWISE,
+        R_motor_forward_direction=Direction.COUNTERCLOCKWISE
+    )
+
+    ctx.state = "Initializing model"
+    model = TreadmilDifferentialDriveRobotModel(ctx, robot)
+
+    ctx.robot = robot
+
+    ctx.state = "Initializing follower algorithm"
+    follower = FollowerAlgorithm(ctx ,model, robot)
+    
+
+    test_suite_mode = isTest()
+    if(test_suite_mode):
+        ctx.state = "test suite"
+        run_task(test_suite(ctx, robot, model))
+        wait(1000000)
+
+
+    async def follower_routine():
+        ctx.state = "stating follower"
+        follower.setup()
+        while True:
+            await follower.tick()
+       
+
+    async def main_task():
+        await multitask(follower_routine(), ctx.routine())
+    
+    run_task(main_task())
+
+def init():
+    try:
+        main()
+    except Exception as e:
+        ctx.speaker.beep(100, 1500)
+        ctx.throw(e)
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\main_position_controller.py
+========================================
+
+from pybricks import *
+from pybricks.hubs import *
+from pybricks import *
+from pybricks.iodevices import *
+from pybricks.robotics import *
+from pybricks.hubs import *
+from pybricks.parameters import *
+from libs.Utills import *
+from Scaffolding import *
+from LineFollowerRobot import *
+from Model import *
+from umath import *
+
+ctx: Context
+def main():
+    global ctx
+    ctx = Context()
+
+    robot = LineFollowerRobot( ctx,
+        L_sensor_port=  "C",
+        R_sensor_port=  "D",
+        L_motor_port=   "A",
+        R_motor_port=   "B",
+        wheel_diameter= 40,
+        wheel_distance= 110,
+        L_motor_forward_direction=Direction.CLOCKWISE,
+        R_motor_forward_direction=Direction.COUNTERCLOCKWISE
+    )
+
+    model = TreadmilDifferentialDriveRobotModel(ctx, robot)
+    
+    def move_to_tick(target_pos, target_heading):
+        forward = model.orientation_2d()
+        pos = model.pos_2d()
+
+        target_heading_error = angle_diff_2d(target_heading, forward)
+        position_error = target_pos - pos
+        #TODO: fix target heading movement prediction
+        position_error += target_heading * dot(target_heading, position_error) * -0.3
+        
+        distance = length(position_error)
+        approach_dampening =  max(0, ((min(0.2, 0.02 * distance) + (0.8 * min(1.0, 0.025 * distance))) * 1.1) - 0.1)
+
+        theta_correction = 180 * angle_diff_2d(position_error, forward) / pi
+        theta_heading_correction = 0.3 * target_heading_error
+        
+        forward_correction = dot(forward, normalize(position_error))
+        forward_correction = sign(forward_correction) * max(abs(forward_correction) - 0.2, 0)
+        
+        
+        
+        fK = 100.0
+        tK = 20.0
+        
+        # Apply multipliers
+        forward_correction *= fK * approach_dampening
+        
+        theta_correction *= approach_dampening
+        theta_correction += theta_heading_correction * max(1, 30 * (1 - (0.05 *distance)))
+        theta_correction *= tK
+
+
+        #For theta limit rotation to 80 degrees/s
+        theta_correction = sign(theta_correction) * min(abs(theta_correction), 80)
+        robot.drive_base.drive(forward_correction, theta_correction)
+
+    async def test():
+        ctx.imu.reset_heading(0)
+        target_pos = vector(300,200)
+        robot.drive_base.use_gyro(True)
+        
+        L_average = await robot.L_sensor.reflection()
+        R_average = await robot.R_sensor.reflection()
+
+        reset = False
+        
+        while True:
+            await wait(1)
+            
+            if reset:
+                target_heading = vector(1, 0)
+                target_pos = vector(0, 0)
+            else:
+                if Button.BLUETOOTH in ctx.buttons.pressed():
+                    reset = True
+
+                forward = model.orientation_2d()
+                target_heading = forward
+                
+
+                R_reflection = await robot.R_sensor.reflection()
+                L_reflection = await robot.L_sensor.reflection()
+
+                L_average = ((L_average * 199) + L_reflection) * 0.005
+                R_average = ((R_average * 199) + R_reflection) * 0.005
+
+                side = (R_reflection - R_average) - (L_reflection - L_average)
+                side *= 3.0
+
+                print(side)
+
+                target_pos = model.pos_2d() + (forward * 40) + (vector(-forward[1], forward[0]) * side)
+            
+            move_to_tick(target_pos, target_heading)
+
+
+
+
+
+
+    async def main_task():
+        await multitask(model.routine(), test())
+
+    run_task(main_task())
+
+main()
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\Model.py
+========================================
+
+from pybricks import *
+from pybricks.hubs import *
+from pybricks import *
+from pybricks.iodevices import *
+from pybricks.robotics import *
+from pybricks.hubs import *
+from pybricks.parameters import *
+from libs.Utills import *
+from Scaffolding import *
+from LineFollowerRobot import *
+from Model import *
+from pybricks.tools import *
+from umath import *
+
+class TreadmilDifferentialDriveRobotModel:
+    def __init__(self, ctx: Context, robot: LineFollowerRobot):
+        self.ctx = ctx
+        self.robot = robot
+        self.position = vector(0, 0, 0)
+        self.last_time = ctx.time()
+        self.last_R_wheel_theta = robot.R_motor.angle()
+        self.last_L_wheel_theta = robot.L_motor.angle()
+
+        # Constants
+        self.gravity_vector_world_space = vector(0, 0, 9810) #gravity in mm/sÂ²
+        self.degree_to_radian = pi / 180
+        self.degree_to_wheel_linear_constant = robot.wheel_diameter * self.degree_to_radian * 0.5
+        self.sensor_CoR_distance = length(vector(robot.X_distance_CoR_sensor, robot.Y_distance_CoR_sensor))
+        self.sensor_turn_rate_to_linear = self.sensor_CoR_distance * self.degree_to_radian
+
+
+    def acceleration_gravity_corrected_world_frame(self):
+        acceleration = self.ctx.imu.orientation() * self.ctx.imu.acceleration();
+        acceleration -=  self.gravity_vector_world_space
+        return acceleration
+
+    def wheel_theta_to_linear(self, theta):
+        return self.degree_to_wheel_linear_constant * theta
+
+    async def routine(self):
+        while True:
+            try:
+                self.tick()
+                await wait(10)
+            except Exception as e:
+                print(e)
+    
+    def pos_2d(self):
+        return vector(self.position[0], self.position[1])
+    
+    def orientation_2d(self):
+        orientation: Matrix = self.ctx.imu.orientation()
+        v = orientation * vector(1, 0, 0)
+        v = vector(v[0], v[1])
+        v /= length(v)
+        return v
+    
+    def sensor_linear_speed(self, linear_rate, turn_rate):
+        rotation_wise_linear = self.sensor_turn_rate_to_linear * (turn_rate)
+        return abs(rotation_wise_linear) + abs(linear_rate)
+
+
+    def tick(self):
+        ctx:Context = self.ctx
+        dt = max(ctx.time() - self.last_time, 0.001)
+        self.last_time = ctx.time()
+
+        self.accel:Matrix = self.acceleration_gravity_corrected_world_frame()
+
+        R_wheel_theta = self.robot.R_motor.angle()
+        L_wheel_theta = self.robot.L_motor.angle()
+
+        R_wheel_delta_theta = R_wheel_theta - self.last_R_wheel_theta
+        L_wheel_delta_theta = L_wheel_theta - self.last_L_wheel_theta
+        
+        self.last_R_wheel_theta = R_wheel_theta
+        self.last_L_wheel_theta = L_wheel_theta
+
+        self.L_wheel_linear_speed = self.wheel_theta_to_linear(L_wheel_delta_theta) / dt
+        self.R_wheel_linear_speed = self.wheel_theta_to_linear(R_wheel_delta_theta) / dt
+
+        self.position += self.ctx.imu.orientation() * vector((self.L_wheel_linear_speed + self.R_wheel_linear_speed ) * 0.5 * dt, 0, 0)
+
+
+        #print(pretty_vec_mm_to_cm_pos(self.position))
+
+
+
+
+
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\Room3 legacy.py
+========================================
+
+# import inspect
+
+from pybricks import *
+from pybricks.hubs import *
+from pybricks import *
+from pybricks.iodevices import *
+from pybricks.robotics import *
+from pybricks.hubs import *
+from pybricks.parameters import *
+from libs.Utills import *
+from libs.AwareRobotics.AwDriveBase import *
+from LineFollowerRobot import LineFollowerRobot
+from Scaffolding import *
+from math import *
+from constants import room3_const, surprises
+
+async def beep_n(robot: LineFollowerRobot, times):
+    robot.ctx.speaker.volume(100)
+    for i in range(times):
+        await robot.ctx.wait(0.1)
+        await robot.ctx.speaker.beep()
+
+
+def stage_log(label: str, text: str):
+    print(label)
+    print(text)
+
+
+class Room3info:
+    def __init__(self, robot: LineFollowerRobot):
+        self.robot = robot
+        self.ctx = robot.ctx
+        self.input = -1
+        self.output = -1
+        self.triangle1 = -1
+        self.triangle2 = -1
+        self.U = room3_const.U
+        self.pos = (0, 0)
+        self.crossed = []
+        pass
+
+    def mark_triangle(self, t):
+        if self.triangle1 == -1:
+            self.triangle1 = t
+        else:
+            self.triangle2 = t
+        self.markInOutPosDisplay()
+
+    def room3_in_out_img(self):
+            s = """
+            9IHG9
+            Jz.yF
+            K...E            
+            Lw.xD
+            9ABC9
+            """.replace("-ABCDEFGHIJKL-"[int(self.input)], "4").replace("-ABCDEFGHIJKL-"[int(self.output)], "0").replace("wxyz-"[["0-1", "3-4", "6-7", "9-10", -1].index(self.triangle1)], "9").replace("wxyz-"[["0-1", "3-4", "6-7", "9-10", -1].index(self.triangle1)], "6")
+
+            for i in range(12):
+                s = s.replace("ABCDEFGHIJKL"[i], "9")
+
+            for i in range(4):
+                s = s.replace("wxyz"[i], "0")
+
+            return s
+
+    def markInOutPosDisplay(self):
+        self.ctx.show_string_encoded_img(self.room3_in_out_img())
+
+    def markOutput(self, n):
+        if self.output == -1 and not n == self.input:
+            print(f"Marked output {n}!")
+            self.output = n
+        self.markInOutPosDisplay()
+
+    def markInput(self, n):
+        if n != -1 and not n == self.output:
+            print(f"Marked input {n}!")
+            self.input = n
+        self.markInOutPosDisplay()
+        
+
+    async def testOutputIfMissing(self, n, mark_dist = room3_const.U * 3):
+        self.crossed.append(n)
+        if self.output == -1:
+            start_angle = self.robot.ctx.imu.heading()
+            await self.robot.drive_base.turn(-6)
+            self.robot.drive_base.turn(12)
+
+            smooth = 0
+            maxDist = 0
+
+            while not self.robot.drive_base.done():
+                dist = await self.robot.esp32_sensor_pack.laser_distance()
+                smooth = (smooth * 4 + dist) * 0.2
+                maxDist = max(maxDist, smooth)
+            self.robot.drive_base.brake()
+
+            await self.robot.drive_base.turn(start_angle - self.robot.ctx.imu.heading())
+
+            if maxDist > mark_dist:
+                self.markOutput(n)
+
+            return maxDist > mark_dist
+
+    def isSolid(self, n):
+        return ((self.input != -1 or n in self.crossed) and self.input != n) and self.output != n
+
+async def room3check(robot: LineFollowerRobot, ctx: Context):
+    """
+               _9_8_7_
+           10 |       | 6
+           11 |       | 5
+           12 |___^___| 4   ^ robot approaching room 3 entrance, about to test for ramp
+                1 2 3
+    """
+    if not abs(ctx.imu.tilt()[0]) > 5: # If it's not tilted, run room3
+        print("Checking for room3!!")
+        for i in range(6):
+            await robot.straight(70 / 6) # Drive straight to check wether its a ramp
+            if abs(ctx.imu.tilt()[0]) > 5: # If tilted, move until not tilted OR 30 cm
+                for j in range(6):
+                    await robot.straight(50) # Drive straight to check wether its not a ramp
+                    error = await robot.L_sensor.reflection() - await robot.R_sensor.reflection()
+                    if abs(error) > 30:
+                        await robot.turn(0.1 * error)
+                    if abs(ctx.imu.tilt()[0]) < 6: # If it's not tilted stop moving
+                        break
+                return
+                
+        await robot.turn(20)
+        if await robot.is_seeing_any_black():
+            await robot.turn(-20)
+            return
+        await robot.turn(-20)
+        
+        # Surprise challenge (ignore)
+        if surprises.signal_on_room3:
+            await robot.signal_blink()
+
+        await room3(robot, ctx)
+                
+async def align_wall_distance_if_reasonable(robot: LineFollowerRobot, distance, n = -2):
+    # Generic wall-distance alignment helper, called from many positions inside the room -
+    # no fixed spot to diagram here (see call sites for position context).
+    start_dist = await robot.esp32_sensor_pack.laser_distance()
+    displaced_dist = distance - 110
+    error = start_dist - displaced_dist 
+    if error < 700 and error > -300 and not robot.data.output == n:
+        await robot.straight(error)
+        await robot.straight(displaced_dist - await robot.esp32_sensor_pack.laser_distance())   
+
+async def straight_back_untill_black_or_wall_and_mark(n, robot: LineFollowerRobot, data: Room3info, do_triangle = True):
+    # Generic backward-drive-until-wall/line/triangle helper, reused from several
+    # sectors with output id `n` - see each call site's diagram for the position context.
+    print(f"Straight to wall {n} and checking!")
+    base = robot.drive_base
+    start_dist = base.distance()
+    await robot.straight(-40)
+    await robot.ctx.wait(0.5)
+    start_heading = robot.ctx.imu.heading()
+    triangle = False
+    # base.use_gyro(False)
+    sonic_check_time = robot.ctx.time()
+    sonic_dist = await robot.esp32_sensor_pack.laser_distance()
+    while True:
+        base.drive(-room3_const.straight_till_speed, 0)
+        if robot.ctx.time() - sonic_check_time > 1:
+            dist = await robot.esp32_sensor_pack.laser_distance()
+            sonic_check_time = robot.ctx.time() 
+            if abs(dist - sonic_dist) < 4 and dist < 1300:
+                break
+            sonic_dist = dist
+            
+        if abs(base.distance() - start_dist) > data.U * 4:
+            break
+        left_motor_load = abs(robot.L_motor.load())
+        right_motor_load = abs(robot.R_motor.load())
+        heading_error = abs(robot.ctx.imu.heading() - start_heading)
+        wall_detected = (
+            left_motor_load > room3_const.straight_to_wall_torque_threshold
+            or right_motor_load > room3_const.straight_to_wall_torque_threshold
+        )
+        triangle_detected = (
+            do_triangle and
+            heading_error > room3_const.triangle_angle_threshold
+            and (
+                left_motor_load > room3_const.triangle_single_motor_torque
+                or right_motor_load > room3_const.triangle_single_motor_torque
+            )
+        )
+
+        if wall_detected or triangle_detected:
+            if left_motor_load > room3_const.straight_to_wall_torque_threshold:
+                w = robot.ctx.get_waiter(0.5)
+                cancel = False
+                while True:
+                    if w:
+                        break
+                    robot.drive(-room3_const.straight_till_speed, 0)
+                    if abs(robot.L_motor.load()) < room3_const.straight_to_wall_torque_threshold * 0.9:
+                        cancel = True
+                        break
+                if cancel:
+                    continue
+                await robot.ctx.speaker.beep()
+
+            print("detected load!")
+            if triangle_detected:
+                triangle = True 
+                print("Triangle!")
+                await robot.straight(50)
+                await robot.turn(start_heading - robot.ctx.imu.heading())
+                await robot.ctx.speaker.beep()
+                await robot.ctx.wait(0.2)
+                await robot.ctx.speaker.beep()
+
+            break
+        if await robot.is_seeing_any_black():
+            data.markOutput(n)
+            base.brake()
+
+            await robot.ctx.speaker.beep()
+            await robot.ctx.wait(0.2)
+            await robot.ctx.speaker.beep()
+            await robot.ctx.wait(0.2)
+            await robot.ctx.speaker.beep()
+
+            await robot.garraUp()
+            await base.straight(data.U * 0.74)
+            base.brake()
+            break
+
+    base.brake()
+    base.use_gyro(True)
+    return abs(base.distance() - start_dist) + 20 , triangle
+
+async def align_at_wall_if_close(robot: LineFollowerRobot, wall = None, reposition = True, max_dist = 150):
+    # Generic "nudge to wall if within range" helper - position depends on caller,
+    # see the diagram at each call site.
+    if wall:
+        print(f"Aligning at wall {wall}")
+    start_dist = await robot.esp32_sensor_pack.laser_distance()
+    if start_dist < max_dist and not robot.data.output == wall:
+        robot.use_gyro(False)
+        await robot.straight(max_dist + 30)
+        robot.use_gyro(True)
+        if reposition:
+            await robot.straight(-start_dist * 0.9)
+
+async def align_at_wall_or_black_if_close(robot: LineFollowerRobot, wall = None, reposition = True):
+    # Same as align_at_wall_if_close, but also aligns on the line if the wall in
+    # question turned out to be the (already found) output wall.
+    if wall:
+        print(f"Aligning at wall {wall}")
+    start_dist = await robot.esp32_sensor_pack.laser_distance()
+    if start_dist < 150:
+        robot.use_gyro(False)
+        await robot.straight(170)
+        robot.use_gyro(True)
+        if reposition:
+            await robot.straight(-start_dist * 0.9)
+    elif wall == robot.data.output:
+        robot.straight(50)
+        while not robot.drive_base.done():
+            if await robot.is_seeing_any_black():
+                break
+        robot.brake()
+        await robot.alignOnLinePerTime(3)
+
+async def room3_entrance_and_low_sector(robot: LineFollowerRobot, data: Room3info):
+    stage_log("LOW-1", """
+    Handle low sector (entrance and sectors 0-1, 4, 12).
+               _9_8_7_
+           10 |       | 6
+           11 |_ _ _ _| 5
+           12 |__low__| 4
+                1 2 3
+    """)
+    await robot.turn(10)
+
+    await robot.straight(data.U * 0.6)
+    start_angle = robot.ctx.imu.heading()
+    start_time  = robot.ctx.time()
+    await robot.turn(85)
+
+
+
+    stage_log("LOW-2", """
+               _9_8_7_
+           10 |       | 6
+           11 |_ _ _ _| 5
+           12 |__low__| 4   o robot after entering + turning 95, about to test wall 4
+                1 2 3
+    """)
+
+    await align_at_wall_if_close(robot, 4)
+    await data.testOutputIfMissing(4)
+
+    await robot.straight(50)
+    await robot.garraDown()
+
+    stage_log("LOW-3", """
+               _9_8_7_
+           10 |       | 6
+           11 |_ _ _ _| 5
+           12 |_>_low_| 4   > robot moved off wall 4, garra down, heading back to test entrance
+                1 2 3
+    """)
+
+    # Passing on low sector, testing entrance and testing out 4
+    input_distance_from_left_wall, triangle = await straight_back_untill_black_or_wall_and_mark(12, robot, data)
+
+    if triangle:
+        data.mark_triangle("0-1")
+
+    if triangle:
+        input_distance_from_left_wall += data.U
+
+    data.markInput(int(1 + floor(0.1 + (input_distance_from_left_wall / data.U))))
+
+    stage_log("LOW-4", """
+               _9_8_7_
+           10 |       | 6
+           11 |_ _ _ _| 5
+           12 |<__low_| 4   < robot backed up along low sector, input marked, near wall 12/entrance
+                1 2 3
+    """)
+
+    # Turn and move to mid sector. Contour triangle if it's there
+    if not triangle:
+        await robot.garraUp()
+        await robot.straight(-20)
+        await robot.turn(90)
+        await robot.garraDown()
+        await data.testOutputIfMissing(1)
+        await align_at_wall_if_close(robot, 1, reposition=True)
+        await robot.straight(-data.U - 100)
+        await robot.garraUp()
+    else:
+        await robot.straight(-30)
+        await robot.curve(-(data.U - 30), -90)
+        await robot.straight(-50)
+        await robot.garraUp()
+        await robot.straight(-50)
+        await data.testOutputIfMissing(1)
+
+    await robot.turn(90)
+    await data.testOutputIfMissing(11, mark_dist=data.U)
+
+    await align_at_wall_if_close(robot, 11, reposition=False, max_dist = 600)
+
+    stage_log("LOW-5", """
+               _9_8_7_
+           10 |       | 6
+           11 |<=     | 5
+           12 |_______| 4   ^ robot at end of low sector, facing wall 11, ready for mid sector
+                1 2 3
+    """)
+
+async def room3_mid_sector(robot: LineFollowerRobot, data: Room3info):
+    stage_log("MID-1", """
+    Handle mid sector (sectors 5 and 11).
+               _9_8_7_
+           10 |       | 6
+           11 |<=     | 5
+           12 |_______| 4   <= robot with garra facing right
+                1 2 3
+    """)
+
+    await robot.garraDown()
+    await robot.straight(-data.U)
+    await robot.turn(3)
+    #await straight_back_untill_black_or_wall_and_mark(5, robot, data) #,do_triangle=False) #############################################################
+    
+    await robot.ctx.wait(0.2)
+    start_angle = robot.ctx.imu.heading()
+    
+    start_dist = robot.drive_base.distance()###################################################################
+    while True:
+        error = start_angle - robot.ctx.imu.heading()
+        robot.drive(-400, error * 16)
+        if abs(robot.drive_base.distance() - start_dist) > data.U * 4:
+            break
+        if robot.is_forcing_motor(room3_const.straight_to_wall_torque_threshold):
+            await robot.move_time(0.5)
+            break
+        if await robot.is_seeing_any_black():
+            data.markOutput(5)
+            robot.brake()
+            await robot.garraUp()
+
+            await robot.straight(data.U)
+            await beep_n(robot, 3)
+            break
+        if abs(error) > 6:
+            robot.brake()
+            robot.brake()
+            await beep_n(robot, 2)
+            await robot.garraUp()
+            await robot.straight(300)
+            await robot.turn(error * 2)
+            robot.straight(300)
+
+    robot.brake()
+
+    await robot.garraUp()
+
+    stage_log("MID-2", """
+               _9_8_7_
+           10 |       | 6
+           11 |=>     | 5   => robot crossed sector 11, garra up, heading right toward 5
+           12 |_______| 4
+                1 2 3
+    """)
+
+    await robot.curve(-80, -90)
+    await align_wall_distance_if_reasonable(robot, data.U * 1.53)
+    await robot.curve(-80, -100)
+    await data.testOutputIfMissing(5)
+    await robot.move_time(0.2)
+
+    stage_log("MID-3", """
+               _9_8_7_
+           10 |       | 6
+           11 |     ^ | 5   ^ robot curved up to wall 5, testing output
+           12 |_______| 4
+                1 2 3
+    """)
+
+    await align_at_wall_if_close(robot, 5, reposition=False)
+    await robot.garraDown()
+    await straight_back_untill_black_or_wall_and_mark(11, robot, data)
+    await robot.garraUp()
+
+    stage_log("MID-4", """
+               _9_8_7_
+           10 |       | 6
+           11 |     <=| 5   <= robot crossing back across sector 5 toward 11
+           12 |_______| 4
+                1 2 3
+    """)
+
+    await robot.straight(-data.U * -1)
+    await align_wall_distance_if_reasonable(robot, data.U * 1.3, n=5)
+    # At this moment the robot should be at the exactly middle!
+    stage_log("MID-5", """
+               _9_8_7_
+           10 |       | 6
+           11 |  =>   | 5
+           12 |_______| 4   <= robot with garra facing left
+                1 2 3
+    """)
+
+
+async def room3_high_sector(robot: LineFollowerRobot, data: Room3info):
+    stage_log("HIG-1", """
+    Handle high sector (sectors 2, 6-7, 8, 9-10).
+               _9_8_7_
+           10 |       | 6
+           11 |   ^   | 5   ^ robot at middle, about to turn up into high sector
+           12 |_______| 4
+                1 2 3
+    """)
+    # Moving to high sector
+    await robot.garraUp()
+
+    if data.output == 5: # If output is 5, align with distance on 11
+        await robot.turn(180)
+        await align_wall_distance_if_reasonable(robot, data.U * 1.3, n=11)
+        await robot.turn(-90)
+    else:
+        await robot.turn(90)
+
+    await data.testOutputIfMissing(2)
+    await robot.straight(60)
+    await robot.garraDown()
+    await straight_back_untill_black_or_wall_and_mark(8, robot, data, do_triangle=False)
+    await robot.garraUp()
+    await robot.straight(-60)
+    await robot.turn(90)
+
+    stage_log("HIG-2", """
+               _9_8_7_
+           10 |  <=   | 6
+           11 |       | 5
+           12 |_______| 4   <= robot with garra facing right
+                1 2 3
+    """)
+
+    # High sector
+    await robot.straight(60)
+
+    await robot.garraDown()
+    a, triangle = await straight_back_untill_black_or_wall_and_mark(6, robot, data)
+
+    if triangle:
+        data.mark_triangle("6-7")
+
+    await robot.garraUp()
+    if not triangle:  # If there's a triangle on sector 6-7, skip testing out 7
+        await robot.turn(90)
+        await data.testOutputIfMissing(7)
+        await robot.turn(90)
+    else:
+        await robot.turn(180)
+
+    await align_at_wall_if_close(robot, 4)
+
+    stage_log("HIG-3", """
+               _9_8_7_
+           10 |     =>| 6
+           11 |       | 5
+           12 |_______| 4   => robot with garra facing left
+                1 2 3
+    """)
+
+    await robot.garraDown()
+    a, triangle = await straight_back_untill_black_or_wall_and_mark(10, robot, data)
+    # Currently in sector 9-10
+
+    await robot.garraUp()
+    if data.output == 10:  # Do only if found exit at 10
+        await robot.straight(90)
+
+    await robot.turn(-90)
+
+    stage_log("HIG-4", """
+               _9_8_7_
+           10 |^      | 6
+           11 |       | 5
+           12 |_______| 4   ^ robot with garra facing down
+                1 2 3
+    """)
+
+    if not triangle:  # Only test 9 if there's not a triangle at 9-10 sector
+        await data.testOutputIfMissing(9)
+    
+    await robot.garraDown()
+    await robot.straight(-data.U)
+    await align_wall_distance_if_reasonable(robot, data.U * 1.3, n=9)
+    await robot.garraUp()
+
+    stage_log("HIG-5", """
+               _9_8_7_
+           10 |       | 6   ^ robot finished high sector sweep, garra down, facing up
+           11 |^      | 5
+           12 |_______| 4
+                1 2 3
+    """)
+
+
+async def test(triangle, robot: LineFollowerRobot, output, ctx):
+    data = Room3info(robot)
+    data.markOutput(output)
+    data.mark_triangle(triangle)
+    robot.data = data
+    robot.use_gyro(True)
+    await aligned_on_triangle_deliver(robot, data)
+    await room3_exit_maneuver(robot, ctx, data)
+
+async def room3_alignment_and_delivery(robot: LineFollowerRobot, data: Room3info):
+    """Handle triangle alignment and delivery sequence."""
+    triangle_turn_offset = 0
+    
+    if data.output != 5:
+        await robot.turn(90)
+        triangle_turn_offset = 180
+        await robot.straight(data.U * 2)
+        await align_at_wall_if_close(robot, 5, reposition=False)
+        await robot.straight(data.U * -1.3)
+        await align_wall_distance_if_reasonable(robot, data.U * 1.6, n = 5)
+    else:
+        await robot.turn(-90)
+        await robot.straight(data.U * 1)
+        await align_at_wall_if_close(robot, 11, reposition=False)
+        await robot.straight(data.U * -1.3)
+        await align_wall_distance_if_reasonable(robot, data.U * 1.6, n = 11)
+
+
+    stage_log("DELIVERY-1", """
+               _9_8_7_
+           10 |       | 6   if output at 5 facing <-----
+           11 |   O   | 5   else  facing   -----> and triangle_turn_offset = 180
+           12 |_______| 4   ^ robot with garra facing down
+                1 2 3
+    """)
+
+    # Align based on triangle position
+    print(f"Delivering at {data.triangle1}!")
+    if data.triangle1 == "6-7":
+        await robot.turn(-45 + triangle_turn_offset)
+    elif data.triangle1 == "0-1":
+        await robot.turn(90 + 45 - triangle_turn_offset)
+    elif data.triangle1 == "3-4":
+        await robot.turn(45 - triangle_turn_offset)
+    else: # If none do 9-10
+        await robot.turn(-90 - 45 + triangle_turn_offset)
+
+
+
+    stage_log("DELIVERY-2", """
+               _9_8_7_
+           10 |       | 6
+           11 |   *   | 5   * robot rotated to face the marked triangle corner
+           12 |_______| 4
+                1 2 3
+    """)
+async def aligned_on_triangle_deliver(robot: LineFollowerRobot, data: Room3info):
+
+    triangles_aligned = (
+        (data.triangle1 in ["0-1", "6-7"] and data.triangle2 in ["0-1", "6-7"])
+        or (data.triangle1 in ["3-4", "9-10"] and data.triangle2 in ["3-4", "9-10"])
+    )
+
+    await robot.garraDown()
+    await robot.move_time(2, -500)
+    await robot.garraUp()
+    await robot.turn(180)
+
+    await robot.garraDown()
+
+    if triangles_aligned:
+        await robot.move_time(3, -500)
+        await robot.garraUp()
+        await robot.garraDown()
+        await robot.straight(2 * data.U)
+
+    await robot.move_time(2)
+    await robot.straight(-data.U * 0.3, speed = 600)
+    await robot.garraUp()
+    await robot.garraDown()
+    robot.drive_base.use_gyro(False)
+    await robot.move_time(0.6)
+
+    robot.drive_base.use_gyro(True)
+    await robot.straight(-data.U * 0.5)
+
+    await robot.straight(-data.U * 0.7)
+    await robot.garraUp()
+
+
+async def room3_exit_maneuver(robot: LineFollowerRobot, ctx: Context, data: Room3info):
+    """Handle exit maneuver to find and follow the line out."""
+
+    # Orient based on triangle position
+    robot.use_gyro(True)
+    if data.triangle1 == "0-1":
+        await robot.turn(135)
+    elif data.triangle1 == "3-4":
+        await robot.turn(-135)
+    elif data.triangle1 == "6-7":
+        await robot.turn(-45)
+    else:  # If none do 9-10
+        await robot.turn(45)
+
+    stage_log("EXIT-1", """
+               _9_8_7_
+           10 |       | 6
+           11 |   V   | 5   V robot after delivery sequence, garra up, back at center
+           12 |_______| 4
+                1 2 3
+    """)
+    # Move based on output location
+    if data.output in [12, 4]:
+        await robot.straight(-data.U * 1.3)
+    if data.output in [10, 6]:
+        await robot.straight(data.U * 1.3)
+
+    stage_log("EXIT-2", """
+               _9_8_7_
+           10 |   A   | 6   at A if output 10, 6
+           11 |   B   | 5   at B if other
+           12 |___C___| 4   at C if output 12, 4
+                1 2 3
+    """)
+    # Turn based on output
+    if data.output in [4, 5, 6, 3, 7]:
+        await robot.turn(90)                 # Facing ---->
+    if data.output in [10, 11, 12, 9, 1]:    # Facing <----
+        await robot.turn(-90)
+    if data.output in [2]:    # Facing V
+        await robot.turn(180)
+
+    stage_log("EXIT-3", """
+               _9_X_7_
+           10X|   -   |X6   
+           11X|   -   |X5     
+           12X|___-___|X4   
+                1 X 3
+    """)
+
+    # Final positioning ONLY FOR MISSING OUTPUTS
+
+    if data.output in [1, 3, 7, 9]:
+        await robot.straight(data.U * 1.1)
+        stage_log("EXIT-3.1", """
+               _9_X_7_
+           10X|<A   B>|X6  at A if out 9
+           11X|       |X5  at B if out 7 
+           12X|<D___C>|X4  at C if out 3
+                1 X 3      at D if out 1
+        """)
+        if data.output in [1, 7]:
+            await robot.turn(-90)
+        if data.output in [3, 9]:
+            await robot.turn(90)
+
+    stage_log("EXIT-4", """
+               _9_8_7_
+           10 |       | 6
+           11 |   *   | 5   * robot facing output, ready to search for the line
+           12 |_______| 4
+                1 2 3
+    """)
+
+    # Search for line
+    await robot.straight(data.U * 0.7)
+    start_angle = ctx.imu.heading()
+    while True:
+        robot.drive(200, 0)
+        if await robot.is_seeing_any_black():
+            break
+
+        if abs(start_angle - ctx.imu.heading()) > 7:
+            await robot.straight(-80)
+            await robot.turn((start_angle - ctx.imu.heading()) * 8)
+            await ctx.wait(0.2)
+            start_angle = ctx.imu.heading()
+
+    robot.brake()
+    robot.use_gyro(True)
+    await robot.straight(-40)
+    await robot.alignOnLinePerTime(2)
+    await robot.straight(-100)
+    await robot.turn(90)
+    await align_wall_distance_if_reasonable(robot, data.U * 1.55, n = 11) #<---------------------------------------
+    await robot.turn(-90)
+    await robot.straight(180)
+
+    robot.brake()
+    await robot.turn(-20)
+    await robot.align_on_line_thingie(robot.R_sensor, robot.L_sensor, 1)
+
+
+    robot.brake()
+
+    stage_log("EXIT-6", """
+               _9_8_7_
+           10 |       | 6
+           11 |       | 5
+           12 |_______| 4
+                1 2 3   robot has exited room 3 and re-acquired the line outside
+    """)
+
+
+async def room3(robot: LineFollowerRobot, ctx: Context):
+
+    robot.set_modified_straight_speed(room3_const.straight_speed)
+    print("Running room 3!!")
+    data = Room3info(robot)
+    robot.data = data
+    data.markInOutPosDisplay()
+
+    robot.drive_base.use_gyro(True)
+
+    # Execute each sector in sequence
+    await room3_entrance_and_low_sector(robot, data)
+    await room3_mid_sector(robot, data)
+    await room3_high_sector(robot, data)
+    await room3_alignment_and_delivery(robot, data)
+    await aligned_on_triangle_deliver(robot, data)
+    await room3_exit_maneuver(robot, ctx, data)
+
+    robot.clear_modified_straigth_speed()
+
+    
+async def align_room_3_entrance(robot: LineFollowerRobot, ctx: Context, data:Room3info):
+    """
+               _9_8_7_
+           10 |       | 6
+           11 |       | 5
+           12 |___^___| 4   ^ robot lining up on the entrance line before starting room 3
+                1 2 3
+    """
+    await robot.straight(40)
+    await robot.alignOnLinePerTime(time=4, black_threshold=90, k=3, speedK = 5, doPreAlign=False)
+
+# async def move_untill_black_or_stopped_moving():
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\Room3.py
+========================================
+
+# import inspect
+
+from pybricks import *
+from pybricks.hubs import *
+from pybricks import *
+from pybricks.iodevices import *
+from pybricks.robotics import *
+from pybricks.hubs import *
+from pybricks.parameters import *
+from libs.Utills import *
+from libs.AwareRobotics.AwDriveBase import *
+from LineFollowerRobot import LineFollowerRobot
+from Scaffolding import *
+from math import *
+from V3.r3_main import run_room3
+
+
+async def beep_n(robot: LineFollowerRobot, times):
+    robot.ctx.speaker.volume(100)
+    for i in range(times):
+        await robot.ctx.wait(0.1)
+        await robot.ctx.speaker.beep()
+
+
+async def room3check(robot: LineFollowerRobot, ctx: Context):
+    """
+               _9_8_7_
+           10 |       | 6
+           11 |       | 5
+           12 |___^___| 4   ^ robot approaching room 3 entrance, about to test for ramp
+                1 2 3
+    """
+    if not abs(ctx.imu.tilt()[0]) > 5: # If it's not tilted, run room3
+        print("Checking for room3!!")
+        for i in range(6):
+            await robot.straight(70 / 6) # Drive straight to check wether its a ramp
+            if abs(ctx.imu.tilt()[0]) > 5: # If tilted, move until not tilted OR 30 cm
+                for j in range(6):
+                    await robot.straight(50) # Drive straight to check wether its not a ramp
+                    error = await robot.L_sensor.reflection() - await robot.R_sensor.reflection()
+                    if abs(error) > 30:
+                        await robot.turn(0.1 * error)
+                    if abs(ctx.imu.tilt()[0]) < 6: # If it's not tilted stop moving
+                        break
+                return
+                
+        await robot.turn(20)
+        if await robot.is_seeing_any_black():
+            await robot.turn(-20)
+            return
+        await robot.turn(-20)
+        
+
+        await run_room3(robot, ctx)
+              
+
+
+    
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\Scaffolding.py
+========================================
+
+from pybricks import *
+from pybricks.hubs import *
+from pybricks import *
+from pybricks.parameters import *
+from pybricks.iodevices import *
+from pybricks.robotics import *
+from pybricks.hubs import *
+from pybricks.pupdevices import *
+from libs.Exceptions import WrongPortError
+import FailHandler
+import sys
+from libs.Utills import *
+
+class waiter:
+    def __init__(self, ctx, duration, inverted = False):
+        self.ctx = ctx
+        self.inverted = inverted
+        self.end_time = ctx.time() + duration
+
+    def __bool__(self):
+        return not self.inverted if self.ctx.time() > self.end_time else self.inverted
+
+
+class Context:
+    def __init__(self, errorHandler: FailHandler):
+        self.state = "initializing context"
+
+        self.errorHandler = errorHandler
+        self.hub = PrimeHub()
+        self.speaker = self.hub.speaker
+        self.imu = self.hub.imu
+        self.display = self.hub.display
+        self.buttons = self.hub.buttons
+        self.battery = self.hub.battery
+        self.cron = StopWatch()
+        self.display.off()
+        self.robot = None
+        errorHandler.bindContext(self)
+        print("\033[2J\033[H", end="")
+        print("\n")
+        self.setup_ports()
+        self.hub_info_dump()
+
+    async def wait(self, time):
+        start_time = self.time()
+        while True:
+            if self.time() - start_time > time:
+                break
+    
+    def time(self):
+        return self.cron.time() * 0.001
+    
+    def throw(self, e: Exception):
+        self.errorHandler.exception(e)
+    
+    def time_ms(self):
+        return self.cron.time()
+
+    def get_waiter(self, duration):
+        return waiter(self, duration)
+
+    def get_invereted_waiter(self, duration):
+        return waiter(self, duration, inverted = True)
+
+    def setup_one_port(self, port: Port):
+        pp = connect_port_device(port)
+        self.ports[str(port)] = pp
+        return pp
+    
+    def reload_one_port(self, port: Port):
+        pp = connect_port_device(port)
+        if pp[1] != None:
+            self.ports[str(port)] = pp
+            return pp
+        else:
+            return self.ports[str(port)]
+        
+    def setup_ports(self):
+        self.ports = {}
+
+        self.pA = self.setup_one_port(Port.A)
+        self.pB = self.setup_one_port(Port.B)
+        self.pC = self.setup_one_port(Port.C)
+        self.pD = self.setup_one_port(Port.D)
+        self.pE = self.setup_one_port(Port.E)
+        self.pF = self.setup_one_port(Port.F)
+    
+    def reload_empty_ports(self):
+        self.pA = self.reload_one_port(Port.A)
+        self.pB = self.reload_one_port(Port.B)
+        self.pC = self.reload_one_port(Port.C)
+        self.pD = self.reload_one_port(Port.D)
+        self.pE = self.reload_one_port(Port.E)
+        self.pF = self.reload_one_port(Port.F)
+    
+    def indicate_port(self, p):
+        ind = "ABCDEF".find(p)
+        self.display.off()
+        self.display.pixel(int("002244"[ind]), int("040404"[ind]), 100)
+        self.display.pixel(int("002244"[ind]), int("131313"[ind]), 100)
+
+    def show_string_encoded_img(self, s):
+        i = 0
+        for c in s:
+            if c in "0123456789.ABCDEFGHIJKLMNOPQRSTUV":
+                if c in "ABCDEFGHIJKLMNOPQRSTUV":
+                    self.display.pixel((i - (i % 5)) / 5, i % 5, 3)
+                elif c != ".":
+                    self.display.pixel((i - (i % 5)) / 5, i % 5, int(c) * 10)
+                else:
+                    self.display.pixel((i - (i % 5)) / 5, i % 5, 0)
+                i += 1
+            
+
+    async def routine(self):
+        while True:
+            await wait(20)
+            self.errorHandler.refresh_display()
+            if await self.robot.L_sensor.color() == Color.RED:
+                self.robot.drive_base.stop()
+
+                sys.exit()
+
+
+
+
+    def get_port(self, port:str):
+        return self.ports[f"Port.{port}"][1]
+    
+    def get_port_of_type(self, port:str, expected):
+        if not isinstance(self.ports[f"Port.{port}"][1], expected):
+            raise WrongPortError(port, str(expected)[8:len(str(expected))-2], self.ports[f"Port.{port}"][0])
+
+        return self.ports[f"Port.{port}"][1]
+    
+    def battery_percent_approximation(self):
+        v = self.battery.voltage() / 1000
+
+        if v >= 8.4: return 100
+        if v <= 6.6: return 0
+
+        return int((v - 6.6) / (8.4 - 6.6) * 100)
+
+    def hub_info_dump(self):
+        state_log = ("\n" * 2) + "System state dump\n" + ("="*100)
+        state_log += f"\nBatery current: {self.battery.current()}mA,  Batery voltage: {self.battery.voltage()}mV"
+        battery_percent = self.battery_percent_approximation()
+        state_log += f"\nBatery level: n{battery_percent}% [{"=" * int(battery_percent * 0.2)}{" " * int((100 - battery_percent) * 0.2)}]"
+        
+        state_log += "\n" + "-" * 100
+
+        system_info = self.hub.system.info()
+        state_log += f"\nBLE connected: {system_info.get("host_connected_ble")}, Hub name: {system_info.get("name")}"
+
+        state_log += "\n" + "-" * 100
+
+        state_log += "\nPORT VIEW"
+        
+        state_log += f"\nA: {self.ports["Port.A"][0]:<20}" + f"B: {self.ports["Port.B"][0]:<20}"
+        state_log += f"\nC: {self.ports["Port.C"][0]:<20}" + f"D: {self.ports["Port.D"][0]:<20}"
+        state_log += f"\nE: {self.ports["Port.E"][0]:<20}" + f"F: {self.ports["Port.F"][0]:<20}"
+
+        state_log += "\n" + "-" * 100
+        state_log += f"\nCharger current: {self.hub.charger.current()} mA"
+        state_log += "\n" + "-" * 100
+
+        print(state_log)
+
+        if (battery_percent < 70):
+            self.low_batterie_warn()
+
+    def low_batterie_warn(self):
+        print(f"Low battery! {self.battery_percent_approximation()}%")
+        self.sound_message(1)
+        
+
+
+
+
+    def sound_message(self, n):
+        self.boop(300, 200)
+        for i in range(n):
+            self.boop(600, 300)
+
+
+
+    def boop(self, f, t = 400):
+        for i in range (10):
+            v = (i)/10
+            v = v ** 0.7
+            v = 1 - v
+            v = v
+            v *= 100
+            self.speaker.volume(v)
+            self.speaker.beep(f, t / 10)
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\TestSuite.py
+========================================
+
+
+import gc
+
+
+def isTest():
+    return False  
+
+
+async def test_suite(ctx, robot, model):
+    await room3_algorithm_speed_test(max_steps=128, iterations=128)
+
+
+async def room3_algorithm_speed_test(iterations=1, max_steps=16):
+    """Time the shared Room 3 algorithm using simulated robots only."""
+    from pybricks.tools import StopWatch
+    from V3.r3_algorithm import algorithm, destroy_algorithm
+    from V3.r3_model import all_room_descriptors, room_supplier
+    from V3.r3_model_robot import r3_model_robot
+    from V3.NekoMath import PrettyPrint
+
+    if iterations < 1 or max_steps < 1:
+        raise ValueError("iterations and max_steps must be positive")
+
+    descriptors = all_room_descriptors()
+    timer = StopWatch()
+    total_ms = 0
+    total_steps = 0
+    finished_runs = 0
+
+    pp = PrettyPrint()
+
+    pp + "Room 3 speed test: simulated robot only; hardware will not move"
+    pp.line_break()
+    pp + f"Hypotheses per run: {len(descriptors)}" 
+    pp + f"Max steps per run: {max_steps}" 
+    pp + f"iterations: {iterations}" 
+    pp.print()
+
+    for run_index in range(iterations):
+        print("Currently running iteration", run_index)
+        descriptor_index = (run_index * (len(descriptors) - 1)) // max(iterations - 1, 1)
+        simulated_room = next(room_supplier((descriptors[descriptor_index],)))
+        simulated_robot = r3_model_robot(simulated_room)
+
+        
+        free_memory = getattr(gc, "mem_free", lambda: 0)
+        allocated_memory = getattr(gc, "mem_alloc", lambda: 0)
+        print("Before alg: Free RAM:", free_memory(), "bytes,", "Used RAM:", allocated_memory(), "bytes")
+        alg = algorithm(simulated_robot, verbose=True, render=True)
+        print("After alg: Free RAM:", free_memory(), "bytes,", "Used RAM:", allocated_memory(), "bytes")
+
+        start_ms = timer.time()
+        steps = 0
+        finished = False
+        while steps < max_steps and not finished:
+            await alg.measure()
+            finished = alg.step()
+            steps += 1
+
+        elapsed_ms = timer.time() - start_ms
+        total_ms += elapsed_ms
+        total_steps += steps
+        if finished:
+            finished_runs += 1
+        print("Run %d: %d steps, %s, %.1f ms" % (
+            run_index + 1,
+            steps,
+            "finished" if finished else "step limit",
+            elapsed_ms,
+        ))
+
+        print("Before alg destruction: Free RAM:", free_memory(), "bytes,", "Used RAM:", allocated_memory(), "bytes")
+        destroy_algorithm(alg)
+        print("After alg destruction: Free RAM:", free_memory(), "bytes,", "Used RAM:", allocated_memory(), "bytes")
+
+
+    pp = PrettyPrint()
+    pp += f"Done running tests {iterations} tests!"
+    
+    pp.line_break()
+
+    pp + f"Average run time: {(total_ms / iterations):.1f} ms"
+    pp + f"Average time per step: {(total_ms / max(total_steps, 1)):.1f} ms"
+    pp + f"Runs reaching an exit: {finished_runs} of {iterations}"
+    pp.print()
+
+
+
+
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\__init__.py
+========================================
+
+import main
+import ESP32_bridge
+import V3.NekoMath
+
+
+
+#ESP32_bridge.init()
+
+
+main.init()
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\libs\AzSensors.py
+========================================
+
+from pybricks import *
+from pybricks.hubs import *
+from pybricks.iodevices import *
+from pybricks.robotics import *
+from pybricks.pupdevices import *
+
+# from Utills import *
+
+
+class AzColorSensor(ColorSensor):
+
+    # ===============[ Constructor ]===============
+
+    def __init__(self, port):
+        super().__init__(port)
+
+        # Multipliers
+        self.reflection_multiplier = 1.0
+
+
+
+        # Snap values
+        self.reflection_snap_value = 0
+        self.color_snap_value = None
+        self.rgb_snap_value = (0, 0, 0)
+
+    # ===============[ Reflection ]===============
+
+
+    # ===============[ Snap System ]===============
+
+    async def snap(self):
+        self.reflection_snap_value = await self.reflection()
+        self.color_snap_value = await self.color()
+        self.rgb_snap_value = await self.rgb()
+        self.line_snap_value = await self.line()
+
+    # ===============[ Color Helpers ]===============
+
+    async def isColor(self, color):
+        return (await self.color()) == color
+
+    async def isGreen(self):
+        return await self.isColor(Color.GREEN)
+
+    async def isRed(self):
+        return await self.isColor(Color.RED)
+
+    async def isBlue(self):
+        return await self.isColor(Color.BLUE)
+
+    async def isWhite(self):
+        return await self.isColor(Color.WHITE)
+
+    async def isBlack(self):
+        return await self.isColor(Color.BLACK)
+
+    # ===============[ Line Detection ]===============
+
+    async def line(self):
+
+        r, g, b = await self.rgb()
+
+        return (
+            r * self.line_r_weight +
+            g * self.line_g_weight +
+            b * self.line_b_weight
+        ) * 0.23
+
+    def lineSnap(self):
+        return self.line_snap_value
+
+    # ===============[ Deep/Shallow Line ]===============
+
+    async def isDeepLine(self):
+        return (await self.line()) < 7
+
+    async def isShallowLine(self):
+        return (await self.line()) < 9
+
+    def isDeepLineSnap(self):
+        return self.lineSnap() < 7
+
+    def isShallowLineSnap(self):
+        return self.lineSnap() < 9
+
+    # ===============[ Setters ]===============
+
+    def setReflectionMultiplier(self, value):
+        self.reflection_multiplier = value
+
+    def setRGBMultipliers(self, r=1.0, g=1.0, b=1.0):
+
+        self.rgb_r_multiplier = r
+        self.rgb_g_multiplier = g
+        self.rgb_b_multiplier = b
+
+    def setLineWeights(self, r=1.0, g=1.0, b=1.0):
+
+        self.line_r_weight = r
+        self.line_g_weight = g
+        self.line_b_weight = b
+
+
+class AzDualColorSensor:
+
+    # ===============[ Constructor ]===============
+
+    def __init__(self, left_sensor, right_sensor, sensor_distance=15):
+
+        self.left: AzColorSensor = left_sensor
+        self.right: AzColorSensor = right_sensor
+
+        # Distance between sensors in mm
+        self.sensor_distance = sensor_distance
+
+    # ===============[ Snap System ]===============
+
+    async def snap(self):
+        await self.left.snap()
+        await self.right.snap()
+
+    # ===============[ Reflection ]===============
+
+    async def reflection(self):
+
+        return (
+            await self.left.reflection(),
+            await self.right.reflection()
+        )
+
+    def reflection_snap(self):
+
+        return (
+            self.left.reflection_snap(),
+            self.right.reflection_snap()
+        )
+
+    async def left_reflection(self):
+        return await self.left.reflection()
+
+    async def right_reflection(self):
+        return await self.right.reflection()
+
+    # ===============[ RGB ]===============
+
+    async def rgb(self):
+
+        return (
+            await self.left.rgb(),
+            await self.right.rgb()
+        )
+
+    def rgb_snap(self):
+
+        return (
+            self.left.rgb_snap(),
+            self.right.rgb_snap()
+        )
+
+    async def left_rgb(self):
+        return await self.left.rgb()
+
+    async def right_rgb(self):
+        return await self.right.rgb()
+
+    # ===============[ RGB Difference ]===============
+
+    async def rgb_difference(self):
+
+        lr, lg, lb = await self.left.rgb()
+        rr, rg, rb = await self.right.rgb()
+
+        return (
+            lr - rr,
+            lg - rg,
+            lb - rb
+        )
+
+    def rgb_snap_difference(self):
+
+        lr, lg, lb = self.left.rgb_snap()
+        rr, rg, rb = self.right.rgb_snap()
+
+        return (
+            lr - rr,
+            lg - rg,
+            lb - rb
+        )
+
+    # ===============[ Color ]===============
+
+    async def color(self):
+
+        return (
+            await self.left.color(),
+            await self.right.color()
+        )
+
+    def color_snap(self):
+
+        return (
+            self.left.color_snap(),
+            self.right.color_snap()
+        )
+
+    async def left_color(self):
+        return await self.left.color()
+
+    async def right_color(self):
+        return await self.right.color()
+
+    # ===============[ Color Helpers ]===============
+
+    async def isColor(self, color):
+
+        return (
+            await self.left.isColor(color),
+            await self.right.isColor(color)
+        )
+
+    async def bothColor(self, color):
+
+        return (
+            await self.left.isColor(color) and
+            await self.right.isColor(color)
+        )
+
+    async def eitherColor(self, color):
+
+        return (
+            await self.left.isColor(color) or
+            await self.right.isColor(color)
+        )
+
+    # ===============[ Line ]===============
+
+    async def line(self):
+
+        return (
+            await self.left.line(),
+            await self.right.line()
+        )
+
+    def line_snap(self):
+        return (
+            self.left.lineSnap(),
+            self.right.lineSnap()
+        )
+
+    async def left_line(self):
+        return await self.left.line()
+
+    async def right_line(self):
+        return await self.right.line()
+
+    def left_line_snap(self):
+        return self.left.lineSnap()
+
+    def right_line_snap(self):
+        return self.right.lineSnap()
+
+    # ===============[ Line Operations ]===============
+
+    async def line_difference(self):
+        return (
+            await self.left.line() -
+            await self.right.line()
+        )
+
+    def line_snap_difference(self):
+        return (
+            self.left.lineSnap() -
+            self.right.lineSnap()
+        )
+
+    async def line_difference_sign(self):
+        difference = await self.line_difference()
+
+        if difference > 0:
+            return 1
+
+        if difference < 0:
+            return -1
+
+        return 0
+
+    def line_snap_difference_sign(self):
+
+        difference = self.line_snap_difference()
+
+        if difference > 0:
+            return 1
+
+        if difference < 0:
+            return -1
+
+        return 0
+
+    async def average_line(self):
+
+        return (
+            await self.left.line() +
+            await self.right.line()
+        ) / 2
+
+    def average_line_snap(self):
+
+        return (
+            self.left.lineSnap() +
+            self.right.lineSnap()
+        ) / 2
+
+    async def minimum_line(self):
+
+        return min(
+            await self.left.line(),
+            await self.right.line()
+        )
+
+    def minimum_line_snap(self):
+
+        return min(
+            self.left.lineSnap(),
+            self.right.lineSnap()
+        )
+
+    # ===============[ Deep/Shallow Line ]===============
+
+    async def isDeepLine(self):
+
+        return (
+            await self.left.isDeepLine(),
+            await self.right.isDeepLine()
+        )
+
+    async def isShallowLine(self):
+
+        return (
+            await self.left.isShallowLine(),
+            await self.right.isShallowLine()
+        )
+
+    def isDeepLineSnap(self):
+
+        return (
+            self.left.isDeepLineSnap(),
+            self.right.isDeepLineSnap()
+        )
+
+    def isShallowLineSnap(self):
+
+        return (
+            self.left.isShallowLineSnap(),
+            self.right.isShallowLineSnap()
+        )
+
+    async def isAnyDeepLine(self):
+
+        return (
+            await self.left.isDeepLine() or
+            await self.right.isDeepLine()
+        )
+
+    async def isAnyShallowLine(self):
+
+        return (
+            await self.left.isShallowLine() or
+            await self.right.isShallowLine()
+        )
+
+    def isAnyDeepLineSnap(self):
+
+        return (
+            self.left.isDeepLineSnap() or
+            self.right.isDeepLineSnap()
+        )
+
+    def isAnyShallowLineSnap(self):
+
+        return (
+            self.left.isShallowLineSnap() or
+            self.right.isShallowLineSnap()
+        )
+
+    # ===============[ Distance ]===============
+
+    def setSensorDistance(self, distance_mm):
+        self.sensor_distance = distance_mm
+
+    # ===============[ Helpers ]===============
+
+    def sensors(self):
+        return (self.left, self.right)
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\libs\Exceptions.py
+========================================
+
+
+class WrongPortError(Exception):
+    __slots__ = ("port", "expected", "found", "_message")
+
+    def __init__(self, port=None, expected=None, found=None, message=None):
+        if message is None:
+            if port is None and expected is None:
+                message = "Wrong port"
+            elif expected is None:
+                message = "Wrong port: {}".format(port)
+            elif port is None:
+                message = "Wrong port, expected: {}".format(expected)
+            elif found is None:
+                message = "Wrong port: {}; expected {}".format(port, expected)
+            else:
+                message = "Wrong port: {}; expected {}, got {}".format(port, expected, found)
+
+        self.port = port
+        self.expected = expected
+        self.found = found
+        self._message = message
+
+    def __str__(self):
+        return self._message
+
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\libs\Utills.py
+========================================
+
+from pybricks.pupdevices import Motor, ColorSensor, UltrasonicSensor
+from pybricks.parameters import Port
+from pybricks.tools import *
+from umath import *
+from ESP32_bridge import Esp32SensorPack
+from libs.AzSensors import AzColorSensor
+
+tau = pi + pi
+
+def connect_port_device(port: Port):
+    
+    try:
+        return ("Motor", Motor(port))
+    except:
+        pass
+
+    try:
+        return ("Color Sensor", AzColorSensor(port))
+    except:
+        pass
+
+    try:
+        return ("Ultrasonic Sensor", Esp32SensorPack(port))
+    except:
+        pass
+
+    return ("Nothing / Unknown", None)
+
+ports_strings = {
+    "a": Port.A,
+    "A": Port.A,
+    "b": Port.B,
+    "B": Port.B,
+    "c": Port.C,
+    "C": Port.C,
+    "d": Port.D,
+    "D": Port.D,
+    "e": Port.E,
+    "E": Port.E,
+    "f": Port.F,
+    "F": Port.F
+}
+
+def get_port(port:str):
+    return ports_strings[port]
+
+def pretty_vec_mm_to_meter(vec:Matrix):
+   return f"[x: {(vec[0]/1000):<+7.3f}, y: {(vec[1]/1000):<+7.3f}, z: {(vec[2]/1000):<+7.3f}]"
+
+def pretty_vec_mm_to_cm_pos(vec:Matrix):
+   return f"[x: {(vec[0]/10):<+7.3f}cm, y: {(vec[1]/10):<+7.3f}cm, z: {(vec[2]/10):<+7.3f}cm]"
+
+def pretty_vec_cm_pos(vec:Matrix):
+   return f"[x: {(vec[0]):<+7.3f}cm, y: {(vec[1]):<+7.3f}cm, z: {(vec[2]):<+7.3f}cm]"
+
+
+def length_squared(vec):
+    return sum(v * v for v in vec)
+
+def length(vec):
+    return length_squared(vec) ** 0.5
+
+def dot(a, b):
+    return sum(x * y for x, y in zip(a, b))
+
+def normalize(vec):
+    l = length(vec)
+    if l == 0:
+        return vec
+    return tuple(v / l for v in vec)
+
+def angle_between(a, b):
+    la = length(a)
+    lb = length(b)
+
+    if la == 0 or lb == 0:
+        return 0  # or handle differently
+
+    cos_theta = dot(a, b) / (la * lb)
+
+    # clamp for numerical safety
+    cos_theta = max(-1, min(1, cos_theta))
+
+    return acos(cos_theta)
+
+
+def angle_diff_2d(a, b):
+    # a and b are (x, y)
+    return atan2(a[0]*b[1] - a[1]*b[0], dot(a, b))
+
+def sign(v):
+    if v >= 0:
+        return 1
+    else:
+        return -1
+
+def clamp(top, down, value):
+    return max(down, min(top, value))
+
+class PortError(RuntimeError):
+    def __init__(self, port:str, *args):
+        super().__init__(*args)
+        self.port = port
+    
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\libs\AwareRobotics\AwDriveBase.py
+========================================
+
+from pybricks import *
+from pybricks.hubs import *
+from pybricks import *
+from pybricks.iodevices import *
+from pybricks.robotics import *
+from pybricks.hubs import *
+from pybricks.parameters import *
+from libs.Utills import *
+from Scaffolding import *
+
+
+
+class AwDriveBase (DriveBase):
+    def __init__(self, left_motor, right_motor, wheel_diameter, axle_track, ctx: Context):
+        super().__init__(left_motor, right_motor, wheel_diameter, axle_track)
+        self.ctx = ctx
+        self.drive_target_speed = 0
+        self.drive_target_turn_rate = 0
+        self.cron = StopWatch()
+        self.driving = False
+        self.driving_start_ms = 0
+        self.left_motor = left_motor
+        self.right_motor = right_motor
+        self.wheel_diameter = wheel_diameter;
+        self.axle_track = axle_track
+        self.cm_per_heading_degree = axle_track * pi / 360 / 2
+        self.cm_per_rotation = self.wheel_diameter * pi
+        self.cm_per_rotation_degree = self.wheel_diameter * pi / 360
+        self.stuck = None
+        self.stuck_start_time = 0
+
+    def driving_time(self):
+        if self.driving:
+            return self.cron.time() - self.driving_start_ms
+        else:
+            return -1
+
+    def drive(self, speed, turn_rate):
+        if not self.driving:
+            self.driving_start_ms = self.cron.time()
+        self.driving = True
+        self.drive_target_speed = speed
+        self.drive_target_turn_rate = turn_rate
+
+        super().drive(speed, turn_rate)
+    
+        if self.driving_time() > 200:
+            targetSpeed = speed / self.cm_per_rotation_degree
+            targetSpeedDiff = turn_rate / self.cm_per_heading_degree
+            
+            stuck = None
+            if abs(self.left_motor.speed(100)) < (targetSpeed + targetSpeedDiff) * 0.05:
+                stuck = "left "
+            if abs(self.right_motor.speed(100)) < (targetSpeed - targetSpeedDiff) * 0.05:
+                if stuck == None:
+                    stuck == "right"
+                else:
+                    stuck = "right left"
+
+            if stuck != None:
+                if self.stuck == None:
+                    self.stuck_start_time = self.cron.time()
+
+                self.ctx.errorHandler.stuck_while_driving(self, stuck, self.cron.time() - self.stuck_start_time)
+
+            self.stuck = stuck
+                
+                
+            
+
+
+    def straight(self, distance, then = Stop.HOLD, wait = True):
+        self.driving = False
+        return super().straight(distance, then, wait)
+    
+    def curve(self, radius, angle, then = Stop.HOLD, wait = True):
+        self.driving = False
+        return super().curve(radius, angle, then, wait)
+    
+    def brake(self):
+        self.driving = False
+        self.drive_target_speed = 0
+        self.drive_target_turn_rate = 0
+        return super().brake()
+    
+    def distance(self):
+        try:
+            self.last_measured = super().distance()
+            return self.last_measured
+        except:
+            print("Distance read failed! Reusing!")
+            return self.last_measured
+
+    
+    def angle(self):
+        return super().angle()
+    
+
+    
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\V3\NekoMath.py
+========================================
+
+import umath
+
+
+# ===================[ Pretty visual stuff ]===================
+grayscale_map = " .,-~+>=ixH#$â–’â–“â–ˆ"
+
+class PrettyPrint:
+    def __init__(self, box = True, label = None):
+        self.box = box
+        self.label = label
+        self.lines = []
+        pass
+
+    def line(self, s):
+        self.lines.extend(s.split("\n"))
+
+    def print(self):
+        width = max([len(line) for line in self.lines if isinstance(line, str)])
+        if self.box:
+            print("â”Œ" + "â”€" * width + "â”")
+            for line in self.lines:
+                if isinstance(line, str):
+                    print(f"â”‚{line:<{width}}â”‚")
+                else:
+                    if line[1] == "lb": print(f"â”‚{width * "-"}â”‚")
+
+            print("â””" + "â”€" * width + "â”˜")
+
+    def __add__(self, other):
+        if isinstance(other, list):
+            self.lines.extend(other)
+        else:
+            self.line(other)
+
+        return self
+
+    def line_break(self):
+        self.lines.append(("EXTRA", "lb"))
+
+def grayscale_char(v, min = 0):
+    return grayscale_map[int(min + int(len(grayscale_map) - 1 - min) * v)]
+
+def print_grid(grid: list, do_outline = True, print = True, square = True, min = 0):
+    pp = PrettyPrint(box=True)
+    g = grid.copy()
+    g.reverse()
+    for row in g:
+        pp + "".join([str(v) for v in row])
+
+    if print: pp.print()
+
+def print_probabilitie_grid(grid: list, do_outline = True, print = True, square = True, min = 0):
+    m = grid_max(grid)
+    pp = PrettyPrint(box=True)
+    g = grid.copy()
+    g.reverse()
+    for row in g:
+        pp + "".join([grayscale_char(v / m, min = min) * (2 if square else 1) for v in row])
+
+    if print: pp.print()
+
+def clear_terminal():
+    # 'nt' means Windows, otherwise it assumes Linux/macOS
+    pass #os.system('cls' if os.name == 'nt' else 'clear')
+# ===================[ Grid direction stuff ]===================
+
+STEP_TUPLE_FROM_DIR = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+
+def straight_move_vec_from_4_state_dir(dir):
+    if dir % 4 == 0: return  0,  1
+    if dir % 4 == 1: return  1,  0
+    if dir % 4 == 2: return  0, -1
+    if dir % 4 == 3: return -1,  0
+
+# ===================[ Sets, arrays and grid stuff ]===================
+
+
+def grid_max(g):
+    if not isinstance(g, list) or isinstance(g, (str, bytes)):
+        return g
+
+    return max(grid_max(x) for x in g)
+
+def grid_sum(g):
+    if not isinstance(g, list) or isinstance(g, (str, bytes)):
+        return g
+
+    return sum(grid_sum(x) for x in g)
+
+
+def for_all_grid(g, f, co = None, depth = None):
+    if not isinstance(g, list) or isinstance(g, (str, bytes)) or depth == 0:
+            if co is None: return f(g)
+            else: return f(g, co)
+    
+    if co is None: return [for_all_grid(x, f,    depth= None if depth is None else (depth - 1)) for x in g]
+    else         : return [for_all_grid(x, f, y, depth= None if depth is None else (depth - 1)) for x, y in zip(g, co)]
+
+def grid_neighbors(grid, coord, neighboorhood = STEP_TUPLE_FROM_DIR, default = 0):
+    out = []
+    for step in neighboorhood:
+        ax = grid
+        for dim, v in enumerate(step):
+            d_pos = coord[dim] + v
+            if d_pos < 0 or d_pos >= len(ax):
+                ax = default
+                break
+            
+            ax = ax[d_pos]
+
+        out.append(ax)
+
+    return out
+
+
+# ===================[ Combinatories and information theory stuff ]===================
+
+def combinations(iterable, r):
+    # combinations('ABCD', 2) --> AB AC AD BC BD CD
+    # From itertools recipes
+    pool = tuple(iterable)
+    n = len(pool)
+    if r > n:
+        return
+    indices = list(range(r))
+    yield tuple(pool[i] for i in indices)
+    while True:
+        for i in reversed(range(r)):
+            if indices[i] != i + n - r:
+                break
+        else:
+            return
+        indices[i] += 1
+        for j in range(i + 1, r):
+            indices[j] = indices[j - 1] + 1
+        yield tuple(pool[i] for i in indices)
+
+def possibilities(options, n):
+    if n == 1:
+        return [[v] for v in options]
+    else:
+        p = possibilities(options, n - 1)
+        new = []
+        for v in options:
+            for pp in p:
+                pp = pp.copy()
+                pp.append(v)
+                new.append(pp)
+        return new
+
+def entropy(counts):
+    n = sum(counts)
+    return -sum(c / n * log2(c / n) for c in counts if c)
+
+# ===================[ Math wrappers ]===================
+e = umath.e
+def pow(a, b):
+    return umath.pow(a, b)
+
+def exp(p):
+    return pow(e, p)
+
+def log2(x):
+    return umath.log2(x)
+
+def sigmoid(v, decay = 1):
+    return 1 / (1 + exp(-v * decay))
+
+def saturate(x, scale):
+    x = max(x, 0)
+    return 1 - exp(-x / scale)
+
+def floor(v):
+    return umath.floor(v)
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\V3\obrExperimentalData.py
+========================================
+
+
+# PLACEHOLDER VALUES!
+avg_seconds_p_tile  = 15
+avg_score_p_tile    = 14
+avg_tiles_after_r3  = 14
+avg_tiles_before_r3 = 12
+
+# Room 3 state chances
+probabilitie_of_room3_having_a_obstacle = 0.5
+probabilitie_of_room3_per_shape = {"3x3": 0.34, "3x4": 0.33, "4x3": 0.33}
+
+
+avg_time_per_action = {"move":6.0, "turn": 9.0, "measure": 0.0}
+score_multiplier_per_victim = 1.3
+
+round_duration = 600
+
+avg_score_before_r3 = avg_tiles_before_r3 * avg_score_p_tile
+avg_time_before_r3  = avg_tiles_before_r3 * avg_seconds_p_tile
+avg_score_after_r3  = avg_tiles_after_r3 * avg_score_p_tile
+avg_time_after_r3   = avg_tiles_after_r3 * avg_seconds_p_tile
+
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\V3\r3_algorithm.py
+========================================
+
+from V3.NekoMath import *
+from V3.obrExperimentalData import *
+from V3.r3_model import *
+from V3.r3_model_robot import *
+from V3.r3_opening_book import OpeningBook, opening_book_compatible
+from V3.r3_score_functions import *
+from V3.r3_info import r3_info
+
+try:
+    from Spike.V3.r3_real_robot import r3_real_robot
+except ImportError:
+    r3_real_robot = None
+
+try:
+    from V3.r3_opening_book_data import BOOK_CONFIG, BOOK_DATA
+except ImportError:
+    BOOK_CONFIG = None
+    BOOK_DATA = None
+
+FORWARD = 0
+RIGHT = 1
+BACKWARD = 2
+LEFT = 3
+
+clearance_after_r3 = 2
+
+"""
+Ideal score function:
+(S1 + (E * S2)) * 1.2^D
+S1 = expected score before room 3
+S2 = expected score after room 3
+E = probabilitie of exiting room 3
+D = sum of probabilities of delivering first, second and third victim
+
+where
+
+S2 = A * max(0, L - B - T) + (step(L - B, T) * 60)
+A = follower points per second
+L = room 3 start time
+B = follower after room 3 expected time
+T = time from start of room 3
+60 = score for finishing follower
+
+"""
+
+def action_from_key(key, robot: r3_model_robot, print = False, print_call = print):
+    if key == FORWARD:
+        robot.forward()
+    elif key == BACKWARD:
+        robot.backyard()
+    elif key == LEFT:
+        robot.turn_left()
+    elif key == RIGHT:
+        robot.turn_right()
+    
+    elif "+" in key or "-" in key:
+        if "+" in key: s = 1
+        else: s = -1
+
+        d = straight_move_vec_from_4_state_dir(robot.dir())
+        s += d[0]
+        s += d[1]
+
+        if s > 0:
+            robot.forward()
+            if print: print_call("forward")
+        else:
+            robot.backyard()
+            if print: print_call("backward")
+
+    elif "forward" in key:
+        robot.forward()
+        if print: print_call("forward")
+    
+    elif "left" in key:
+        robot.turn_left()
+        if print: print_call("left")
+        
+    elif "right" in key:
+        robot.turn_right()
+        if print: print_call("right")
+    
+    elif "backward" in key:
+        robot.backyard()
+        if print: print_call("backward")
+
+    pass
+
+def measure(rr):
+    def mm(room: r3_model, ref = None):
+        rr._room = room
+        d = rr.last_dir
+        touched_triangle = getattr(rr, "touched_triangle", False)
+        touched_wall = getattr(rr, "garra_touched_wall", False)
+        if ref is None:
+            return rr.measure(room=room), touched_triangle, touched_wall, rr.exited
+        dist = rr.measure(room=room)
+        if dist > clearance_after_r3 and dist < 4:
+            dist = min(dist, ref[0])
+        return dist, touched_triangle, touched_wall, rr.exited
+    return mm
+
+def update_r3_run_info(robot: r3_model_robot, info: r3_info, data: dict, action):
+    data["visited_positions"] = list(data["visited_positions"])
+    spread = info.spread_at(robot.x, robot.y)
+
+    # Onboard and delivered victim info
+    if not (robot.x, robot.y) in data["visited_positions"] and action == BACKWARD:
+        # Only collect victims if not passed there before
+        data["onboard_victims"] += spread["victim"]
+    if action == FORWARD:
+        data["delivered_victims"] += data["onboard_victims"] * spread["triangle"]
+        data["onboard_victims"] *= 1 - spread["triangle"]
+
+    data["visited_positions"].append((robot.x, robot.y))
+
+
+def beam_state_key(candidate):
+    robot = candidate[1]
+    data = candidate[3]
+    # Visit order and repeats do not matter: later logic only asks if a cell was visited.
+    visited = tuple(sorted(set(data["visited_positions"])))
+    # Exclude accumulated path score and first action; for an identical future state,
+    # the beam should retain only the path with the higher score so far.
+    return (
+        robot.x,
+        robot.y,
+        robot.dir(),
+        robot.time,
+        robot.exited,
+        data["onboard_victims"],
+        data["delivered_victims"],
+        visited,
+        candidate[4],
+        candidate[5],
+    )
+
+
+def insert_beam_candidate(beam, candidate, limit, seen_states):
+    score = candidate[2]
+    low = 0
+    high = len(beam)
+    while low < high:
+        middle = (low + high) // 2
+        if beam[middle][2] >= score:
+            low = middle + 1
+        else:
+            high = middle
+
+    if low >= limit:
+        return
+    key = beam_state_key(candidate)
+    previous = seen_states.get(key)
+    if previous is not None:
+        # A lower-scoring path to the same future state cannot become the winner.
+        if previous[2] >= score:
+            return
+        beam.remove(previous)
+    beam.insert(low, candidate)
+    seen_states[key] = candidate
+    if len(beam) > limit:
+        removed = beam.pop()
+        removed_key = beam_state_key(removed)
+        if seen_states.get(removed_key) is removed:
+            del seen_states[removed_key]
+
+
+# Decides to maximize score; what score to use will be hardcoded in a checklist.
+# Will beam search
+def decision_policy_2(
+    real_robot: r3_model_robot,
+    info: r3_info,
+    persistent_data: dict,
+    verbose=True,
+    first_action_bonuses=None,
+):
+    if not info.room_descriptors:
+        if verbose:
+            print("[r3_algorithm] WARNING: no room hypotheses; turning left")
+        return LEFT
+
+    # ===================== [Beam search] =====================
+
+    pa = [FORWARD, BACKWARD, LEFT, RIGHT]
+    total_room_probability = sum(
+        info.room_probability(descriptor)
+        for descriptor in info.room_descriptors
+    )
+    BEAM = [(None, real_robot.copy(), 0, persistent_data.copy(), 0, total_room_probability)]
+    beam_size = 165
+    if verbose:
+        print("[r3_algorithm] Running beam search...")
+    for i in range(7):
+        if verbose:
+            print(" - [Beam search] at depth", i, "with", len(BEAM), "candidates")
+        beam_size -= 20
+        # Run beam search
+        NEW_BEAM = []
+        seen_states = {}
+        for candidate in BEAM:
+            for action in pa:
+                # Unpack candidate data
+                (candidate_first_movement, candidate_robot, candidate_score,
+                 candidate_data, frozen_exit_score, active_probability) = candidate
+                if candidate_first_movement is None: candidate_first_movement = action
+
+                # Create new moved robot
+                new_robot = candidate_robot.copy(); new_robot.noclip = True
+                action_from_key(action, new_robot)
+
+                # Disallow movements into a known collider
+                if info.is_guaranteed_blocked(new_robot): continue
+
+                candidate_data = candidate_data.copy()
+                first_visit = (new_robot.x, new_robot.y) not in candidate_data["visited_positions"]
+                update_r3_run_info(new_robot, info, candidate_data, action)
+
+                # Compute weighted sum of score function for all rooms
+                move_score = 0
+                move_score += info_robot_score_function(candidate_data, info, new_robot)
+                non_exit_score, exit_score = room_robot_score_functions(
+                    new_robot,
+                    candidate_data,
+                )
+                # Rooms sharing an exit cell all freeze their score on its first
+                # visit. Track their combined probability instead of one bit per room.
+                if first_visit:
+                    probability = info.exit_probability_at(new_robot.x, new_robot.y)
+                    frozen_exit_score += exit_score * probability
+                    active_probability -= probability
+
+                move_score += frozen_exit_score + non_exit_score * active_probability
+                if i == 0 and first_action_bonuses is not None:
+                    move_score += first_action_bonuses.get(action, 0)
+
+                
+                insert_beam_candidate(
+                    NEW_BEAM,
+                    (
+                        candidate_first_movement,
+                        new_robot,
+                        candidate_score + move_score,
+                        candidate_data,
+                        frozen_exit_score,
+                        active_probability,
+                    ),
+                    beam_size,
+                    seen_states,
+                )
+
+
+        BEAM = NEW_BEAM
+        if not BEAM:
+            if verbose:
+                print("[r3_algorithm] WARNING: no viable beam candidates; turning left")
+            return LEFT
+    
+    winner = BEAM[0]
+    return winner[0] # First movement of winner beam
+    
+def destroy_algorithm(instance):
+    instance.cleanup()
+    del instance
+    import gc
+    gc.collect()
+
+class algorithm:
+    def __init__(self, robot, verbose=True, render=True):
+        self.robot = robot
+        self.verbose = verbose
+        self.render = render
+        if self.verbose:
+            clear_terminal()
+            print("Setupping r3_info...")
+        self.info = r3_info(verbose=self.verbose)
+        if self.render:
+            self.info.print_information(robot=robot)
+        self.persistent_data = {"onboard_victims": 0, "delivered_victims": 0, "visited_positions": []}
+        self.opening_book = None
+        self.opening_book_node = None
+        if BOOK_DATA is not None and opening_book_compatible(BOOK_CONFIG):
+            try:
+                self.opening_book = OpeningBook(BOOK_DATA)
+                self.opening_book_node = 0
+                if self.verbose:
+                    print("[r3_algorithm] Opening book loaded:", self.opening_book.node_count, "nodes")
+            except ValueError as error:
+                if self.verbose:
+                    print("[r3_algorithm] Opening book ignored:", error)
+        elif BOOK_DATA is not None:
+            if self.verbose:
+                print("[r3_algorithm] Opening book version mismatch; using live search")
+        if self.verbose:
+            print("Done!")
+
+
+    def cleanup(self):
+        self.info.room_descriptors.clear()
+
+        self.info._exit_probability_map = None
+
+        self.info.wall_map = None
+        self.info.out_map = None
+        self.info.obstacle_map = None
+        self.info.victim_map = None
+        self.info.triangle_map = None
+
+        self.info._room_probability_by_group = None
+        self.info._frequency_score_sum = None
+
+        self.persistent_data.clear()
+
+        self.opening_book = None
+        self.opening_book_node = None
+
+        self.robot = None
+        self.info = None
+
+        import gc
+        gc.collect()
+
+    async def measure(self):
+        if self.verbose:
+            print("[r3_algorithm] Measuring...")
+
+        info = self.info
+        persistent_data = self.persistent_data
+        robot = self.robot
+        if isinstance(robot, r3_model_robot):
+            measurement = measure(robot)(robot._room)
+        else:
+            await robot.update_async()
+            measurement = measure(robot)(None)
+        if self.verbose:
+            print("[r3_algorithm] Popping...")
+            print("[r3_algorithm] dist:", measurement[0], "touched triangle:", measurement[1], "touched wall:", measurement[2], "exited:", measurement[3])
+        matched = info.pop_from_measurement(measurement, measure(robot.copy()))
+        if self.opening_book is not None:
+            if not matched:
+                self.opening_book = None
+            else:
+                next_node = self.opening_book.next_node(self.opening_book_node, measurement)
+                if next_node is None:
+                    self.opening_book = None
+                else:
+                    self.opening_book_node = next_node
+        if self.opening_book is None:
+            info.update_probability_spread()
+        if self.verbose:
+            print("[r3_algorithm] Done! Remaining rooms:", len(info.room_descriptors))
+
+
+    def step(self):
+        if self.verbose:
+            print("[r3_algorithm] Starting step decision policy...")
+        info = self.info
+        persistent_data = self.persistent_data
+        robot = self.robot
+
+        action = None
+        if self.opening_book is not None:
+            action = self.opening_book.action_for(self.opening_book_node)
+            if action is None:
+                self.opening_book = None
+        if action is None:
+            if not info._spread_valid:
+                info.update_probability_spread()
+            action = decision_policy_2(robot, info, persistent_data, verbose=self.verbose)
+        if self.verbose:
+            print("[r3_algorithm] Decision policy done! Action:", action)
+
+        action_from_key(action, robot)
+
+        if self.verbose:
+            print("[r3_algorithm] Updating run info...")
+        update_r3_run_info(robot, info, persistent_data, action)
+        
+        if self.verbose:
+            print("Done!")
+        if self.render:
+            print("=" * 20)
+            if info._spread_valid:
+                info.print_information(robot)
+
+            robot_time = robot.time() if callable(robot.time) else robot.time
+            pp = PrettyPrint(box=True)
+            pp + f"Time: {robot_time:.1f}"
+            pp.line_break()
+            pp + "Ilustrative room:"
+            pp + next(info.iter_rooms()).render(robot)
+            pp.line_break()
+            pp + f"Expected delivered victims: {persistent_data["delivered_victims"]:.1f}; Expected onboard victims: {persistent_data["onboard_victims"]:.1f}"
+            pp + f"Possible rooms: {len(info.room_descriptors)}"
+
+            pp.print()
+
+        if robot.exited == "exit":
+            if self.verbose:
+                print("[r3_algorithm] Exited!")
+                print("[r3_algorithm] " + next(info.iter_rooms()).render(robot))
+            return True
+        return False
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\V3\r3_build_opening_book.py
+========================================
+
+"""Build a compact opening policy for the Room 3 search.
+
+Run from the repository root with:
+    python Spike/V3/build_r3_opening_book.py
+    python Spike/V3/build_r3_opening_book.py --depth 5
+"""
+
+import argparse
+import math as umath
+import os
+import sys
+from contextlib import redirect_stdout
+
+SPIKE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if SPIKE_DIR not in sys.path:
+    sys.path.insert(0, SPIKE_DIR)
+
+# NekoMath keeps the hub's native umath import; the desktop builder supplies math.
+sys.modules["umath"] = umath
+
+from V3.NekoMath import straight_move_vec_from_4_state_dir
+from V3.r3_algorithm import (
+    BACKWARD,
+    FORWARD,
+    LEFT,
+    RIGHT,
+    action_from_key,
+    decision_policy_2,
+    r3_info,
+    update_r3_run_info,
+)
+from V3.r3_model import (
+    NULL_ROOM,
+    r3_model,
+    room_from_descriptor,
+)
+from V3.r3_model_robot import r3_model_robot
+from V3.r3_opening_book import (
+    FALLBACK_ACTION,
+    OPENING_INFORMATION_WEIGHT,
+    ROOT_ACTION,
+    TERMINAL_ACTION,
+    current_config_signature,
+    encode_measurement,
+    encode_nodes,
+)
+
+INITIAL_DATA = {
+    "onboard_victims": 0,
+    "delivered_victims": 0,
+    "visited_positions": [],
+}
+MOVE_ACTIONS = (FORWARD, BACKWARD)
+ACTIONS = (FORWARD, BACKWARD, LEFT, RIGHT)
+SENSOR_KEY_INDEXES = (0, 1, 2, 3)
+
+
+class _QuietOutput:
+    def write(self, text):
+        return len(text)
+
+    def flush(self):
+        pass
+
+
+def _measurement_for_room(robot, room, action):
+    exited = robot.exited
+    if action in MOVE_ACTIONS:
+        kind = room.kind(robot.x + room.offset, robot.y)
+        exited = kind if kind in ("exit", "entrance") else None
+
+    distance = room.reading(
+        robot.x + room.offset,
+        robot.y,
+        robot.dir(),
+    )
+    # Triangle layouts are intentionally not part of the opening-book room state.
+    touched_triangle = False
+    touched_wall = False
+
+    dx, dy = robot.last_dir
+    if room.kind(
+        robot.x + dx + room.offset,
+        robot.y + dy,
+    ) in ("obstacle", "wall"):
+        touched_wall = True
+
+    return distance, touched_triangle, touched_wall, exited
+
+
+def _sensor_key(measurement):
+    return tuple(measurement[index] for index in SENSOR_KEY_INDEXES)
+
+
+class OpeningBookBuilder:
+    def __init__(self, max_depth, max_nodes, information_weight):
+        self.max_depth = max_depth
+        self.max_nodes = max_nodes
+        self.information_weight = information_weight
+        self.nodes = [
+            (ROOT_ACTION, []),
+            (FALLBACK_ACTION, []),
+            (TERMINAL_ACTION, []),
+        ]
+        self._canonical_nodes = {}
+        self.decision_count = 0
+
+    def _add_node(self, action, edges):
+        edges = tuple(sorted(edges))
+        signature = action, edges
+        existing = self._canonical_nodes.get(signature)
+        if existing is not None:
+            return existing
+
+        if len(self.nodes) >= self.max_nodes:
+            raise RuntimeError(
+                "opening book exceeded --max-nodes; lower --depth or raise the limit"
+            )
+
+        node_id = len(self.nodes)
+        self.nodes.append((action, edges))
+        self._canonical_nodes[signature] = node_id
+        return node_id
+
+    def _observation_groups(self, robot, descriptors, action=None):
+        outcomes = {}
+        sensor_groups = {}
+        room = r3_model("3x3", 0, 1)
+
+        for descriptor in descriptors:
+            room_from_descriptor(descriptor, room)
+            measurement = _measurement_for_room(robot, room, action)
+            outcomes.setdefault(measurement, []).append(descriptor)
+            sensor_groups.setdefault(_sensor_key(measurement), []).append(descriptor)
+
+        return outcomes, sensor_groups
+
+    def _information_bonuses(self, robot, info):
+        bonuses = {}
+        for action in ACTIONS:
+            moved = robot.copy()
+            moved.noclip = True
+            action_from_key(action, moved)
+            outcomes, _ = self._observation_groups(
+                moved,
+                info.room_descriptors,
+                action,
+            )
+
+            # A room deterministically produces one measurement. Its outcome
+            # entropy is therefore the expected information gained about the
+            # hidden room by taking this action and measuring afterward.
+            outcome_probabilities = []
+            for descriptors in outcomes.values():
+                probability = sum(
+                    info.room_probability(descriptor)
+                    for descriptor in descriptors
+                )
+                if probability > 0:
+                    outcome_probabilities.append(probability)
+            information_gain = -sum(
+                probability * umath.log2(probability)
+                for probability in outcome_probabilities
+            )
+            bonuses[action] = information_gain * self.information_weight
+        return bonuses
+
+    def _build_action_node(self, robot, info, persistent_data, action_depth):
+        if action_depth >= self.max_depth or not info.room_descriptors:
+            return 1
+
+        information_bonuses = self._information_bonuses(robot, info)
+        action = decision_policy_2(
+            robot,
+            info,
+            persistent_data,
+            verbose=False,
+            first_action_bonuses=information_bonuses,
+        )
+        if action not in (FORWARD, BACKWARD, LEFT, RIGHT):
+            return 1
+
+        next_robot = robot.copy()
+        next_robot.noclip = True
+        action_from_key(action, next_robot)
+
+        next_data = persistent_data.copy()
+        update_r3_run_info(next_robot, info, next_data, action)
+
+        outcomes, sensor_groups = self._observation_groups(
+            next_robot,
+            info.room_descriptors,
+            action,
+        )
+        edges = []
+
+        for measurement, _ in outcomes.items():
+            if measurement[3] == "exit":
+                child_id = 2
+            else:
+                descriptors = sensor_groups[_sensor_key(measurement)]
+                child_info = r3_info(descriptors)
+                child_robot = next_robot.copy()
+                child_robot.exited = measurement[3]
+                child_id = self._build_action_node(
+                    child_robot,
+                    child_info,
+                    next_data,
+                    action_depth + 1,
+                )
+            edges.append((encode_measurement(measurement), child_id))
+
+        self.decision_count += 1
+        return self._add_node(action, edges)
+
+    def build(self):
+        initial_info = r3_info()
+        initial_robot = r3_model_robot(NULL_ROOM)
+        initial_robot.noclip = True
+        initial_robot.time = 0.0
+
+        outcomes, sensor_groups = self._observation_groups(
+            initial_robot,
+            initial_info.room_descriptors,
+        )
+        root_edges = []
+
+        for measurement in outcomes:
+            descriptors = sensor_groups[_sensor_key(measurement)]
+            child_info = r3_info(descriptors)
+            child_robot = initial_robot.copy()
+            child_robot.exited = measurement[3]
+            child_id = self._build_action_node(
+                child_robot,
+                child_info,
+                INITIAL_DATA.copy(),
+                0,
+            )
+            root_edges.append((encode_measurement(measurement), child_id))
+
+        self.nodes[0] = (ROOT_ACTION, tuple(sorted(root_edges)))
+        return self.nodes
+
+
+def write_module(path, nodes, information_weight):
+    data = encode_nodes(nodes)
+    config = current_config_signature(information_weight)
+    with open(path, "w", encoding="ascii") as output:
+        output.write("BOOK_CONFIG = ")
+        output.write(repr(config))
+        output.write("\nBOOK_DATA = ")
+        output.write(repr(data))
+        output.write("\n")
+    return len(data), os.path.getsize(path)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--depth", type=int, default=5, help="number of actions to precompute")
+    parser.add_argument("--max-nodes", type=int, default=4096, help="maximum serialized nodes")
+    parser.add_argument(
+        "--information-weight",
+        type=float,
+        default=OPENING_INFORMATION_WEIGHT,
+        help="score bonus per bit of expected measurement information",
+    )
+    parser.add_argument(
+        "--output",
+        default=os.path.join(os.path.dirname(__file__), "r3_opening_book_data.py"),
+        help="generated Python module path",
+    )
+    args = parser.parse_args(argv)
+    if args.depth < 1:
+        parser.error("--depth must be at least 1")
+    if args.max_nodes < 3 or args.max_nodes > 0xFFFF:
+        parser.error("--max-nodes must be from 3 to 65535")
+
+    builder = OpeningBookBuilder(args.depth, args.max_nodes, args.information_weight)
+    try:
+        with redirect_stdout(_QuietOutput()):
+            nodes = builder.build()
+        binary_size, module_size = write_module(
+            args.output,
+            nodes,
+            args.information_weight,
+        )
+    except RuntimeError as error:
+        parser.exit(2, "Opening-book build stopped: {}\n".format(error))
+
+    print("Opening book generated:", args.output)
+    print("Actions searched:", builder.decision_count)
+    print("Nodes after exact subtree deduplication:", len(nodes))
+    print("Information bonus weight:", args.information_weight, "points/bit")
+    print("Packed table bytes:", binary_size)
+    print("Generated module bytes:", module_size)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\V3\r3_info.py
+========================================
+
+from V3.NekoMath import *
+from V3.obrExperimentalData import *
+from V3.r3_model import *
+from V3.r3_model_robot import *
+
+class r3_info:
+    def __init__(self, room_descriptors = None, verbose=True):
+        self.verbose = verbose
+        if room_descriptors is None:
+            if self.verbose:
+                print(" - [r3 info] Building room descriptors...")
+            self.room_descriptors = all_room_descriptors()
+            if self.verbose:
+                print(" - [r3 info] Done!")
+        else:
+            self.room_descriptors = list(room_descriptors)
+        self._exit_probability_map = None
+        self._spread_valid = False
+        self._update_room_probabilities()
+
+
+
+
+    def update_probability_spread(self):
+        if self.verbose:
+            print(" - [r3 info] Updating probability spread...")
+        self.wall_map = [[0 for _ in range(9)] for __ in range(6)]
+        self.out_map = [[0 for _ in range(9)] for __ in range(6)]
+        self.obstacle_map = [[0 for _ in range(9)] for __ in range(6)]
+        self.victim_map = [[0 for _ in range(9)] for __ in range(6)]
+        self.triangle_map = [[0 for _ in range(9)] for __ in range(6)]
+        self._update_room_probabilities()
+
+        room = r3_model("3x3", 0, 1)
+        for descriptor in self.room_descriptors:
+            room_from_descriptor(descriptor, room)
+            increment = self.room_probability(descriptor)
+            victim_increment = increment * 3 / room.free_area()
+            for xg in range(6):
+                for y in range(6):
+                    room: r3_model
+                    kind = room.kind(xg - 1, y - 1)
+                    x = xg - room.offset
+
+                    if kind == "wall":
+                        self.wall_map[y][x + 3] += increment
+                    elif kind == "exit":
+                        self.out_map[y][x + 3] += increment
+                    elif kind == "obstacle":
+                        self.obstacle_map[y][x + 3] += increment
+                    elif kind == "free": # Consider not adding victims on triangle?
+                        self.victim_map[y][x + 3] += victim_increment
+
+                    from V3.r3_model import descriptor_triangle_probability_at
+                    triangle_probability = descriptor_triangle_probability_at(descriptor, xg - 1, y - 1)
+                    self.triangle_map[y][x + 3] += increment * triangle_probability
+
+        if self.verbose:
+            print(" - [r3 info] Done!")
+        self._spread_valid = True
+
+    def _update_room_probabilities(self):
+        group_frequency_sums = [0 for _ in range(6)]
+        group_counts = [0 for _ in range(6)]
+        for descriptor in self.room_descriptors:
+            group = ((descriptor & SHAPE_MASK) >> 4) * 2
+            if (descriptor & 0b1111) != 0b1111:
+                group += 1
+            group_frequency_sums[group] += room_frequency_score(descriptor)
+            group_counts[group] += 1
+
+        self._frequency_score_sum = sum(group_frequency_sums)
+        self._room_probability_by_group = [0 for _ in range(6)]
+        for group in range(6):
+            if group_counts[group]:
+                self._room_probability_by_group[group] = (
+                    group_frequency_sums[group]
+                    / self._frequency_score_sum
+                    / group_counts[group]
+                )
+
+    
+    def is_guaranteed_blocked(self, robot):
+        for descriptor in self.room_descriptors:
+            kind = room_kind_from_descriptor(
+                robot.x + ((descriptor & OFFSET_MASK) >> 6),
+                robot.y,
+                descriptor,
+            )
+            if kind not in ("wall", "obstacle"):
+                return False
+        return True
+
+    def print_information(self, robot: r3_model_robot = None):
+        # self.update_probability_spread()
+        if not self._spread_valid: return
+        def draw_walls(wall_prob):
+            return grayscale_char(wall_prob * wall_prob) * 2
+
+        # Victim map test
+        canvas = for_all_grid(self.victim_map, draw_walls)
+
+        def draw_out(out_prob, canvas):
+            if out_prob > 0.25:
+                return "â—Šâ—Š"
+            return canvas
+
+        canvas = for_all_grid(self.out_map, draw_out, canvas)
+
+        def draw_triangle(out_prob, canvas):
+            if out_prob > 0.6:
+                return "TT"
+            if out_prob > 0.2:
+                return "T" + canvas[0]
+            return canvas
+
+        canvas = for_all_grid(self.triangle_map, draw_triangle, canvas)
+
+        def draw_obstacle(obstacle_prob, canvas):
+            if obstacle_prob > 0.25:
+                return "[]"
+            return canvas
+
+        canvas = for_all_grid(self.obstacle_map, draw_obstacle, canvas)
+
+        canvas[0][4] = "^^"
+
+        if not robot is None:
+            
+            canvas[robot.y + 1][robot.x + 4] = "/>\\<"[robot.dir()] + "\\>/<"[robot.dir()]
+
+
+
+
+        print_grid(canvas)
+
+    def pop_from_measurement(self, result, measurement):
+        matching_descriptors = []
+        room = r3_model("3x3", 0, 1)
+        touched_triangle = bool(result[1])
+        robot = getattr(measurement, "robot", None)
+        from V3.r3_model import descriptor_can_have_triangle_at
+        for descriptor in self.room_descriptors:
+            room_from_descriptor(descriptor, room)
+            if touched_triangle and robot is not None:
+                triangle_x = robot.x + room.offset + robot.last_dir[0]
+                triangle_y = robot.y + robot.last_dir[1]
+                if not descriptor_can_have_triangle_at(descriptor, triangle_x, triangle_y):
+                    continue
+            if measurement(room, ref=result) == result:
+                matching_descriptors.append(descriptor)
+        if not matching_descriptors:
+            if self.verbose:
+                print(
+                    "[r3 info] WARNING: measurement",
+                    result,
+                    "matched no rooms out of",
+                    len(self.room_descriptors),
+                    "; keeping current hypotheses",
+                )
+            return False
+
+        self.room_descriptors = matching_descriptors
+        self._update_room_probabilities()
+        self._spread_valid = False
+        self._exit_probability_map = None
+        return True
+
+    def exit_probability_at(self, x, y):
+        if self._exit_probability_map is None:
+            probabilities = [0 for _ in range(54)]
+            room = r3_model("3x3", 0, 1)
+            for descriptor in self.room_descriptors:
+                room_from_descriptor(descriptor, room)
+                exit_x, exit_y = room.exit_cell()
+                robot_x = exit_x - room.offset
+                if -4 <= robot_x <= 4 and -1 <= exit_y <= 4:
+                    cell = (exit_y + 1) * 9 + robot_x + 4
+                    probabilities[cell] += self.room_probability(descriptor)
+            self._exit_probability_map = probabilities
+
+        if x < -4 or x > 4 or y < -1 or y > 4:
+            return 0
+        return self._exit_probability_map[(y + 1) * 9 + x + 4]
+
+    def spread_at(self, x, y):
+        if not self._spread_valid:
+            spread = {
+                "wall": 0,
+                "obstacle": 0,
+                "exit": 0,
+                "victim": 0,
+                "triangle": 0,
+                "x": x,
+                "y": y,
+            }
+            room = r3_model("3x3", 0, 1)
+            for descriptor in self.room_descriptors:
+                room_from_descriptor(descriptor, room)
+                if not 0 <= x + room.offset + 1 < 6:
+                    continue
+                increment = self.room_probability(descriptor)
+                kind = room.kind(x + room.offset, y)
+                if kind == "wall":
+                    spread["wall"] += increment
+                elif kind == "obstacle":
+                    spread["obstacle"] += increment
+                elif kind == "exit":
+                    spread["exit"] += increment
+                elif kind == "free":
+                    spread["victim"] += increment * 3 / room.free_area()
+                # Triangle layouts are not part of candidate room states.
+            return spread
+
+        s = {}
+        s["wall"] = self.wall_map[y + 1][x + 4]
+        s["obstacle"] = self.obstacle_map[y + 1][x + 4]
+        s["exit"] = self.out_map[y + 1][x + 4]
+        s["victim"] = self.victim_map[y + 1][x + 4]
+        s["triangle"] = self.triangle_map[y + 1][x + 4]
+        s["x"] = x
+        s["y"] = y
+        return s
+
+    def room_probability(self, descriptor):
+        group = ((descriptor & SHAPE_MASK) >> 4) * 2
+        if (descriptor & 0b1111) != 0b1111:
+            group += 1
+        return self._room_probability_by_group[group]
+
+    def iter_rooms(self):
+        return room_supplier(self.room_descriptors)
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\V3\r3_main.py
+========================================
+
+from V3.r3_algorithm import algorithm
+from constants import room3_const
+from V3.r3_real_robot import r3_real_robot
+
+async def run_room3(robot, ctx):
+
+    robot.set_modified_straight_speed(room3_const.straight_speed)
+    await robot.straight(200)
+    print("Running room 3!!")
+
+    robot.drive_base.use_gyro(True)
+
+    interface = r3_real_robot(ctx, robot)
+
+    alg = algorithm(interface)
+
+    while True:
+        await interface.update_async()
+        await alg.measure()
+        finished = alg.step()
+        await interface.update_async()
+        if finished: break
+
+    robot.clear_modified_straigth_speed()
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\V3\r3_model.py
+========================================
+
+"""
+COORDINATES (room frame)
+    x goes right, y goes "up" into the room. The entrance wall is at y = -1.
+    Room cells are 0 <= x < width, 0 <= y < height.
+    The robot enters at cell (offset, 0).
+
+DIRECTIONS    0 = up (+y)   1 = right (+x)   2 = down (-y)   3 = left (-x)
+              turning right = +1, turning left = -1 (mod 4)
+
+WALL NUMBERING: counterclockwise starting at the
+    entrance wall. 0..W-1 bottom (left->right), then right wall going up,
+    then top wall going right->left, then left wall going top->bottom.
+    The entrance gap is wall number `offset`, the exit gap is wall `output`.
+
+MISCELANEOUS
+    * obstacle is 1 cell, or None
+    * obstacle never sits right in front of the entrance or exit gap
+    * a triangle sits in a corner cell, never on the obstacle, never next to a gap
+    * sensor reading: 0..3 = number of free cells before something solid,
+      4 = beam found nothing solid (it left through a gap)
+"""
+
+from V3.NekoMath import *
+from V3.obrExperimentalData import *
+
+SENSOR_FAR = 4
+SHAPES = {"3x3": (3, 3), "3x4": (3, 4), "4x3": (4, 3)}   # (width, height)
+ONLY_OBSTACLE_LESS_ROOMS = False
+OBSTACLE_MASK = 0x000F
+SHAPE_MASK = 0x0030
+OFFSET_MASK = 0x00C0
+OUTPUT_MASK = 0x0F00
+ROOM_SHAPES = ("3x3", "3x4", "4x3")
+ROOM_SHAPE_IDS = {"3x3": 0, "3x4": 1, "4x3": 2}
+ROOM_TRIANGLE_PAIRS = (
+    (0, 1), (0, 2), (2, 3), None,
+    (1, 2), (1, 3), (0, 3), None,
+)
+NO_OBSTACLE = (3, 3)
+
+
+
+# --------------------------------------------------------------------------
+# The room: pure data, never changes
+# --------------------------------------------------------------------------
+# @dataclass(frozen=True)
+class r3_model:
+    shape: str                 # "3x3", "3x4" or "4x3"
+    offset: int                # entrance gap = wall number `offset`
+    output: int                # exit gap = wall number `output`
+    obstacle: tuple = None     # (x, y) or None
+
+    def __init__(self, shape, offset, output, obstacle=None):
+        self.shape = shape
+        self.offset = offset
+        self.output = output
+        self.obstacle = obstacle
+
+    def width(self):  return SHAPES[self.shape][0]
+    def height(self): return SHAPES[self.shape][1]
+
+    def wall_cell(self, n):
+        """Position (outside the room) of wall segment number n."""
+        W, H = self.width(), self.height()
+        if n < W: return (n, -1)
+        n -= W
+        if n < H: return (W, n)
+        n -= H
+        if n < W: return (W - 1 - n, H)
+        n -= W
+        return (-1, H - 1 - n)
+
+    def entrance_cell(self): return self.wall_cell(self.offset)
+    def exit_cell(self):     return self.wall_cell(self.output)
+    def free_area(self):
+        a = self.height() * self.width()
+        a -= 2
+        if not self.obstacle is None: a -= 1
+        return a
+
+    def corner_cell(self, c):
+        W, H = self.width(), self.height()
+        return [(0, 0), (W - 1, 0), (W - 1, H - 1), (0, H - 1)][c]
+
+    def inside(self, x, y):
+        return 0 <= x < self.width() and 0 <= y < self.height()
+
+    def kind(self, x, y):
+        """What is at (x, y)? 'free' | 'obstacle' | 'entrance' | 'exit' | 'wall'"""
+        if self.inside(x, y):
+            return "obstacle" if (x, y) == self.obstacle else "free"
+        if (x, y) == self.entrance_cell(): return "entrance"
+        if (x, y) == self.exit_cell():     return "exit"
+        return "wall"
+
+    def distance(self, x, y, d):
+        """Walk from (x,y) in direction d. Returns (free_cells, what_stopped_us).
+        Gaps are NOT solid: a beam through a gap just keeps going."""
+        dx, dy = STEP_TUPLE_FROM_DIR[d]
+        n = 0
+        while True:
+            x += dx; y += dy
+            k = self.kind(x, y)
+            if k == "free":
+                n += 1
+            else:
+                return n, k
+
+    def reading(self, x, y, d):
+        """What the distance sensor reports."""
+        n, k = self.distance(x, y, d)
+        if k in ("entrance", "exit") or n >= SENSOR_FAR:
+            return SENSOR_FAR
+        return n
+
+    def render(self, robot=None):
+        W, H = self.width(), self.height()
+        g = {}
+        for y in range(-1, H + 1):
+            for x in range(-1, W + 1):
+                k = self.kind(x, y)
+                g[(x, y)] = {"free": "  ", "obstacle": "[]", "wall": "â–ˆâ–ˆ",
+                             "entrance": "^^", "exit": "--"}[k]
+        from V3.r3_triangle_data import is_triangle
+        for y in range(H):
+            for x in range(W):
+                if is_triangle(self, x, y):
+                    g[(x, y)] = "TT"
+        if robot is not None:
+            g[(robot.x + self.offset, robot.y)] = "/>\\<"[robot.dir()] + "\\>/<"[robot.dir()]
+        return "\n".join("".join(g[(x, y)] for x in range(-1, W + 1))
+                         for y in range(H, -2, -1))
+
+NULL_ROOM = r3_model("3x4", 0, 1)   # used for simulating hypothetical poses
+
+
+def room_descriptor(shape, offset, output, obstacle):
+    if obstacle is None:
+        obstacle_x, obstacle_y = NO_OBSTACLE
+    else:
+        obstacle_x, obstacle_y = obstacle
+
+    return (
+        obstacle_x
+        | (obstacle_y << 2)
+        | (ROOM_SHAPE_IDS[shape] << 4)
+        | (offset << 6)
+        | (output << 8)
+    )
+
+
+def room_from_descriptor(descriptor, reuse=None):
+    obstacle_code = descriptor & OBSTACLE_MASK
+    shape_id = (descriptor & SHAPE_MASK) >> 4
+    offset = (descriptor & OFFSET_MASK) >> 6
+    output = (descriptor & OUTPUT_MASK) >> 8
+    obstacle = None
+    if obstacle_code != 0b1111:
+        obstacle = (obstacle_code & 0b11, obstacle_code >> 2)
+
+    if reuse is None:
+        return r3_model(ROOM_SHAPES[shape_id], offset, output, obstacle)
+
+    reuse.shape = ROOM_SHAPES[shape_id]
+    reuse.offset = offset
+    reuse.output = output
+    reuse.obstacle = obstacle
+    return reuse
+
+
+def room_kind_from_descriptor(x, y, descriptor):
+    obstacle_code = descriptor & OBSTACLE_MASK
+    shape_id = (descriptor & SHAPE_MASK) >> 4
+    offset = (descriptor & OFFSET_MASK) >> 6
+    width, height = SHAPES[ROOM_SHAPES[shape_id]]
+
+    if 0 <= x < width and 0 <= y < height:
+        if obstacle_code != 0b1111 and obstacle_code == (x | (y << 2)):
+            return "obstacle"
+        return "free"
+
+    if x == offset and y == -1:
+        return "entrance"
+
+    if room_is_exit_from_descriptor(x, y, descriptor):
+        return "exit"
+    return "wall"
+
+
+def room_is_exit_from_descriptor(x, y, descriptor):
+    shape_id = (descriptor & SHAPE_MASK) >> 4
+    width, height = SHAPES[ROOM_SHAPES[shape_id]]
+    number = (descriptor & OUTPUT_MASK) >> 8
+    if number < width:
+        return x == number and y == -1
+    number -= width
+    if number < height:
+        return x == width and y == number
+    number -= height
+    if number < width:
+        return x == width - 1 - number and y == height
+    number -= width
+    return x == -1 and y == height - 1 - number
+
+
+def room_frequency_score(descriptor):
+    obstacle_code = descriptor & OBSTACLE_MASK
+    shape_id = (descriptor & SHAPE_MASK) >> 4
+    if obstacle_code == 0b1111:
+        obstacle_probability = 1 - probabilitie_of_room3_having_a_obstacle
+    else:
+        obstacle_probability = probabilitie_of_room3_having_a_obstacle
+    return obstacle_probability * probabilitie_of_room3_per_shape[ROOM_SHAPES[shape_id]]
+
+
+
+# --------------------------------------------------------------------------
+# Every legal room
+# --------------------------------------------------------------------------
+def legal_triangle_pairs(shape, offset, output, obstacle):
+    base = r3_model(shape, offset, output, obstacle)
+    gaps = [base.entrance_cell(), base.exit_cell()]
+    free_corners = []
+    for corner in range(4):
+        cx, cy = base.corner_cell(corner)
+        if (cx, cy) == obstacle:
+            continue
+        if any(abs(gx - cx) + abs(gy - cy) == 1 for gx, gy in gaps):
+            continue
+        free_corners.append(corner)
+    return [(a, b) for a, b in combinations(free_corners, 2)]
+
+
+def descriptor_triangle_pairs(descriptor):
+    obstacle_code = descriptor & OBSTACLE_MASK
+    shape_id = (descriptor & SHAPE_MASK) >> 4
+    offset = (descriptor & OFFSET_MASK) >> 6
+    output = (descriptor & OUTPUT_MASK) >> 8
+    obstacle = None if obstacle_code == 0b1111 else (obstacle_code & 0b11, obstacle_code >> 2)
+    return legal_triangle_pairs(ROOM_SHAPES[shape_id], offset, output, obstacle)
+
+
+def descriptor_triangle_probability_at(descriptor, x, y):
+    shape_id = (descriptor & SHAPE_MASK) >> 4
+    offset = (descriptor & OFFSET_MASK) >> 6
+    output = (descriptor & OUTPUT_MASK) >> 8
+    obstacle_code = descriptor & OBSTACLE_MASK
+    obstacle = None if obstacle_code == 0b1111 else (obstacle_code & 0b11, obstacle_code >> 2)
+    room = r3_model(ROOM_SHAPES[shape_id], offset, output, obstacle)
+    pairs = legal_triangle_pairs(room.shape, offset, output, obstacle)
+    if not pairs:
+        return 0
+    matches = sum(1 for pair in pairs if any(room.corner_cell(c) == (x, y) for c in pair))
+    return matches / len(pairs)
+
+
+def descriptor_can_have_triangle_at(descriptor, x, y):
+    shape_id = (descriptor & SHAPE_MASK) >> 4
+    offset = (descriptor & OFFSET_MASK) >> 6
+    room = r3_model(ROOM_SHAPES[shape_id], offset, (descriptor & OUTPUT_MASK) >> 8,
+                    None if (descriptor & OBSTACLE_MASK) == 0b1111 else
+                    (descriptor & 0b11, (descriptor & OBSTACLE_MASK) >> 2))
+    return any(room.corner_cell(c) == (x, y) for pair in descriptor_triangle_pairs(descriptor) for c in pair)
+
+
+def _iter_room_descriptors():
+    for shape, (W, H) in SHAPES.items():
+        for off in range(W):                       # entrance is on the bottom wall
+            for out in range(2 * (W + H)):
+                if out == off:
+                    continue
+                base = r3_model(shape, off, out)
+                gaps = [base.entrance_cell(), base.exit_cell()]
+
+                def in_front(g):                   # room cell right inside a gap
+                    return (min(max(g[0], 0), W - 1), min(max(g[1], 0), H - 1))
+                blocked = {in_front(g) for g in gaps}
+
+                if ONLY_OBSTACLE_LESS_ROOMS:
+                    obstacles = [None]
+                else:
+                    obstacles = [None] + [(x, y) for x in range(W) for y in range(H)
+                                          if (x, y) not in blocked]
+                for obs in obstacles:
+                    yield room_descriptor(shape, off, out, obs)
+
+
+def all_room_descriptors():
+    return list(_iter_room_descriptors())
+
+def room_supplier(descriptors):
+    room = r3_model("3x3", 0, 1)
+    from V3.r3_triangle_data import set_triangles
+    for descriptor in descriptors:
+        room_from_descriptor(descriptor, room)
+        pairs = descriptor_triangle_pairs(descriptor)
+        set_triangles(room, pairs[0] if pairs else ())
+        yield room
+                        
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\V3\r3_model_robot.py
+========================================
+
+from V3.obrExperimentalData import *
+from V3.NekoMath import *
+from V3.r3_robot_interface import r3_robot_interface
+
+
+class r3_model_robot(r3_robot_interface):
+    def __init__(self, room):
+        super().__init__(room)          # hidden truth
+        self.time = 0.0
+
+    def copy(self):
+        n = r3_model_robot(self._room)
+        n.x, n.y, n._dir =    self.x, self.y, self._dir
+        n.exited          =    self.exited
+        n.last_dir        =    self.last_dir
+        n.noclip          =    self.noclip
+        n.time            =    self.time
+        n.garra_touched_wall = self.garra_touched_wall
+        n.touched_triangle = self.touched_triangle
+        n.log             =    self.log
+        return n
+
+
+    def _turn(self, s):
+        self._dir = (self._dir + s) % 4
+        self.garra_touched_wall = False
+        self.touched_triangle = False
+        self._pay("turn")
+
+    def forward(self):
+        """Move one cell. Returns False if blocked (wall/obstacle)."""
+        self._pay("move")
+        self.garra_touched_wall = False
+        self.touched_triangle = False
+        dx, dy = STEP_TUPLE_FROM_DIR[self._dir]
+        self.last_dir = (dx, dy)
+        nx, ny = self.x + dx, self.y + dy
+        k = "free" if self.noclip else self._room.kind(nx + self._room.offset, ny)
+        self.garra_touched_wall = k in ("wall", "obstacle")
+        if self.garra_touched_wall:
+            return False
+
+        self.x, self.y = nx, ny
+        
+    
+        if k in ("exit", "entrance"):
+            self.exited = k
+        return True
+
+    def backyard(self):
+        """Move one cell back; triangle contact restores the original tile."""
+        self._pay("move")
+        self.garra_touched_wall = False
+        self.touched_triangle = False
+        dx, dy = STEP_TUPLE_FROM_DIR[self._dir]
+        self.last_dir = (-dx, -dy)
+        nx, ny = self.x - dx, self.y - dy
+        k = "free" if self.noclip else self._room.kind(nx + self._room.offset, ny)
+        if k in ("wall", "obstacle"):
+            self.garra_touched_wall = True
+            return False
+
+        self.x, self.y = nx, ny
+        if self.on_triangle(room=self._room):
+            self.x, self.y = nx + dx, ny + dy
+            self.touched_triangle = True
+            return False
+        
+        if k in ("exit", "entrance"):
+            self.exited = k
+        return True
+
+    def measure(self, room = None):
+        if room is None: room = self._room
+        self._pay("measure")
+        return room.reading(self.x + room.offset, self.y, self._dir)
+
+    def on_triangle(self, room=None, dx=0, dy=0):
+        """True if standing on a triangle corner (assumes that is how it is found)."""
+        if room is None: room = self._room
+        if room is None: return False
+
+        from V3.r3_triangle_data import is_triangle
+        return is_triangle(room, self.x + room.offset + dx, self.y + dy)
+
+    def _pay(self, what):
+        self.time += avg_time_per_action[what]
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\V3\r3_opening_book.py
+========================================
+
+from V3.obrExperimentalData import *
+from V3.r3_model import ONLY_OBSTACLE_LESS_ROOMS, ROOM_SHAPES, SHAPES
+
+BOOK_FORMAT_VERSION = 1
+BOOK_POLICY_REVISION = 2
+OPENING_INFORMATION_WEIGHT = 50.0
+ROOT_ACTION = 253
+TERMINAL_ACTION = 254
+FALLBACK_ACTION = 255
+
+
+def current_config_signature(information_weight=OPENING_INFORMATION_WEIGHT):
+    return (
+        BOOK_FORMAT_VERSION,
+        BOOK_POLICY_REVISION,
+        round_duration,
+        avg_time_before_r3,
+        avg_score_before_r3,
+        avg_time_after_r3,
+        avg_score_after_r3,
+        score_multiplier_per_victim,
+        probabilitie_of_room3_having_a_obstacle,
+        tuple(
+            (shape, probabilitie_of_room3_per_shape[shape])
+            for shape in ROOM_SHAPES
+        ),
+        tuple((shape, SHAPES[shape]) for shape in ROOM_SHAPES),
+        tuple(avg_time_per_action[key] for key in ("move", "turn", "measure")),
+        ONLY_OBSTACLE_LESS_ROOMS,
+        information_weight,
+    )
+
+
+def opening_book_compatible(config):
+    # Tuning and prior probabilities may intentionally differ from runtime.
+    # Only reject files whose binary layout or policy semantics are incompatible.
+    return (
+        isinstance(config, (tuple, list))
+        and len(config) >= 2
+        and config[0] == BOOK_FORMAT_VERSION
+        and config[1] == BOOK_POLICY_REVISION
+    )
+
+
+def encode_measurement(measurement):
+    distance, touched_triangle, touched_wall, exited = measurement
+    if not 0 <= distance <= 4:
+        raise ValueError("distance must be from 0 to 4")
+
+    exit_code = {None: 0, "exit": 1, "entrance": 2}.get(exited)
+    if exit_code is None:
+        raise ValueError("invalid exit measurement")
+    return (
+        distance
+        | (int(bool(touched_triangle)) << 3)
+        | (int(bool(touched_wall)) << 4)
+        | (exit_code << 5)
+    )
+
+
+def decode_measurement(code):
+    distance = code & 0x07
+    touched_triangle = bool((code >> 3) & 1)
+    touched_wall = bool((code >> 4) & 1)
+    exit_code = (code >> 5) & 0x03
+
+    if distance > 4 or exit_code > 2:
+        raise ValueError("invalid encoded measurement")
+    return distance, touched_triangle, touched_wall, (None, "exit", "entrance")[exit_code]
+
+
+def encode_nodes(nodes):
+    count = len(nodes)
+    if count > 0xFFFF:
+        raise ValueError("too many opening-book nodes")
+
+    records = []
+    offsets = []
+    cursor = 7 + count * 2
+    for action, edges in nodes:
+        if not 0 <= action <= 0xFF or len(edges) > 0xFF:
+            raise ValueError("node action or edge count is out of range")
+        record = bytearray((action, len(edges)))
+        for measurement_code, child in edges:
+            if not 0 <= measurement_code <= 0xFF or not 0 <= child < count:
+                raise ValueError("invalid opening-book edge")
+            record.append(measurement_code)
+            record.append(child & 0xFF)
+            record.append((child >> 8) & 0xFF)
+        offsets.append(cursor)
+        records.append(record)
+        cursor += len(record)
+
+    if cursor > 0xFFFF:
+        raise ValueError("opening book exceeds the 16-bit format limit")
+
+    data = bytearray(b"R3OB")
+    data.append(BOOK_FORMAT_VERSION)
+    data.append(count & 0xFF)
+    data.append((count >> 8) & 0xFF)
+    for offset in offsets:
+        data.append(offset & 0xFF)
+        data.append((offset >> 8) & 0xFF)
+    for record in records:
+        data.extend(record)
+    return bytes(data)
+
+
+class OpeningBook:
+    def __init__(self, data):
+        if len(data) < 7 or data[0] != 82 or data[1] != 51 or data[2] != 79 or data[3] != 66:
+            raise ValueError("invalid opening-book header")
+        if data[4] != BOOK_FORMAT_VERSION:
+            raise ValueError("unsupported opening-book version")
+
+        self.data = data
+        self.node_count = data[5] | (data[6] << 8)
+        self.offset_table_end = 7 + self.node_count * 2
+        if self.offset_table_end > len(data):
+            raise ValueError("truncated opening-book offsets")
+
+    def _node_offset(self, node_id):
+        if node_id < 0 or node_id >= self.node_count:
+            return None
+        index = 7 + node_id * 2
+        offset = self.data[index] | (self.data[index + 1] << 8)
+        if offset < self.offset_table_end or offset + 2 > len(self.data):
+            return None
+        return offset
+
+    def action_for(self, node_id):
+        offset = self._node_offset(node_id)
+        if offset is None:
+            return None
+        action = self.data[offset]
+        return action if action < 4 else None
+
+    def next_node(self, node_id, measurement):
+        offset = self._node_offset(node_id)
+        if offset is None:
+            return None
+
+        code = encode_measurement(measurement)
+        edge_count = self.data[offset + 1]
+        edge = offset + 2
+        for _ in range(edge_count):
+            if edge + 2 >= len(self.data):
+                return None
+            child = self.data[edge + 1] | (self.data[edge + 2] << 8)
+            if self.data[edge] == code:
+                return child if child < self.node_count else None
+            edge += 3
+        return None
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\V3\r3_opening_book_data.py
+========================================
+
+BOOK_CONFIG = (1, 2, 600, 180, 168, 210, 196, 1.3, 0.5, (('3x3', 0.34), ('3x4', 0.33), ('4x3', 0.33)), (('3x3', (3, 3)), ('3x4', (3, 4)), ('4x3', (4, 3))), (6.0, 9.0, 0.0), False, 40.0)
+BOOK_DATA = b'R3OB\x01"\x00K\x00\\\x00^\x00`\x00q\x00y\x00\x84\x00\x92\x00\x97\x00\x9f\x00\xb0\x00\xbb\x00\xc0\x00\xc5\x00\xd6\x00\xde\x00\xe3\x00\xeb\x00\xf0\x00\xf8\x00\x00\x01\x08\x01\x13\x01\x18\x01\x1d\x01.\x013\x018\x01I\x01W\x01_\x01g\x01o\x01}\x01\xfd\x05\x00\x18\x00\x01\x1b\x00\x02\r\x00\x03!\x00\x04 \x00\xff\x00\xfe\x00\x02\x05\x00\x01\x00\x02\x01\x00\x10\x01\x00\x12\x01\x002\x02\x00\x03\x02\x10\x01\x00\x14\x01\x00\x02\x03\x01\x03\x00\x11\x04\x001\x02\x00\x02\x04\x00\x01\x00\x04\x01\x00\x10\x01\x00\x14\x01\x00\x00\x01\x04\x01\x00\x02\x02\x04\x06\x00\x14\x07\x00\x02\x05\x00\x01\x00\x03\x01\x00\x10\x01\x00\x13\x01\x003\x02\x00\x02\x03\x02\t\x00\x12\x04\x002\x02\x00\x02\x01\x04\x01\x00\x03\x01\x04\x0b\x00\x03\x05\x00\x05\x00\x01\n\x00\x02\x0c\x00\x03\x0c\x00\x04\x08\x00\x02\x02\x02\x01\x00\x12\x01\x00\x02\x01\x01\x0e\x00\x02\x02\x04\x01\x00\x14\x01\x00\x03\x01\x10\x01\x00\x02\x02\x04\x10\x00\x14\x11\x00\x03\x02\x00\x01\x00\x04\x01\x00\x02\x02\x02\x13\x00\x12\x04\x00\x03\x03\x00\x01\x00\x01\x01\x00\x04\x01\x00\x03\x01\x04\x15\x00\x03\x01\x04\x13\x00\x03\x05\x00\x0f\x00\x01\x14\x00\x02\x16\x00\x03\x17\x00\x04\x12\x00\x02\x01\x14\x01\x00\x03\x01\x04\x19\x00\x03\x05\x00\x0f\x00\x01\x14\x00\x02\x1a\x00\x03\x1a\x00\x04\x12\x00\x02\x04\x00\x01\x00\x02\x01\x00\x10\x01\x00\x12\x01\x00\x02\x02\x01\x1c\x00\x11\x11\x00\x02\x02\x10\x01\x00\x13\x01\x00\x02\x02\x02\x1e\x00\x12\x11\x00\x03\x04\x00\x1d\x00\x01\x1f\x00\x02\x0c\x00\x03\x0c\x00\x03\x04\x00\x0c\x00\x01\x0c\x00\x02\x0c\x00\x04\x0c\x00'
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\V3\r3_real_robot.py
+========================================
+
+from V3.obrExperimentalData import *
+from V3.NekoMath import *
+from LineFollowerRobot import LineFollowerRobot
+from Scaffolding import Context
+from V3.r3_model_robot import r3_model_robot
+from V3.r3_robot_interface import r3_robot_interface
+
+
+class r3_real_robot(r3_robot_interface):
+    def __init__(self, ctx: Context, robot: LineFollowerRobot):
+        super().__init__()
+        self.start_time = ctx.time()
+        self.ctx = ctx
+        self.robot = robot
+        self.real_last_measurement = None
+        self.move_queue = []
+        self.is_on_triangle = False
+        self.moves_since_align = 100
+
+    def time(self):
+        return self.ctx.time()
+
+
+    async def update_async(self):
+        self.moves_since_align += 1
+        for m in self.move_queue:
+            await m
+
+        self.move_queue.clear()
+
+        self.real_last_measurement = await self.robot.esp32_sensor_pack.laser_distance()
+        self.robot.ctx.display.number(self.real_last_measurement)
+
+        pass
+
+    async def real_turn(self, dir):
+        self.robot.drive_base.use_gyro(True)
+        await self.robot.garraUp()
+        await self.robot.turn(90 * dir)
+        await self.robot.straight(10)
+
+        if (await self.robot.esp32_sensor_pack.laser_distance()) < 120 and self.moves_since_align > 4:
+            self.moves_since_align = 0
+            await self.robot.straight(140)
+            await self.robot.straight(-50)
+
+    async def real_move(self, dir):      
+        if dir == -1:
+            await self.robot.garraDown()  
+        do_triangle = True
+        robot = self.robot
+
+        base = robot.drive_base
+        start_dist = base.distance()
+        await robot.straight(-80)
+        await robot.ctx.wait(0.5)
+        start_heading = robot.ctx.imu.heading()
+        triangle = False
+        # base.use_gyro(False)
+        sonic_check_time = robot.ctx.time()
+        sonic_dist = await robot.esp32_sensor_pack.laser_distance()
+        self.exited = None
+        self.garra_touched_wall = False
+        self.touched_triangle = False
+        while True:
+            base.drive(200 * dir, 0)
+ 
+            if abs(base.distance() - start_dist) > 370:
+                break
+
+            if await self.robot.is_seeing_any_black(): self.exited = 'exit'
+            # if self.robot.is_seeing_any_silver(): self.exited = 'entrance'
+
+            if await self.robot.esp32_sensor_pack.rear_sensor_pressed():
+                self.garra_touched_wall = True
+                self.robot.drive_base.brake()
+                await self.robot.garraUp()
+
+
+            left_motor_load = abs(robot.L_motor.load())
+            right_motor_load = abs(robot.R_motor.load())
+            heading_error = abs(robot.ctx.imu.heading() - start_heading)
+            wall_detected = left_motor_load > 160 or right_motor_load > 160
+            triangle_detected = (
+                do_triangle and
+                heading_error >6
+                and (
+                    left_motor_load > 100
+                    or right_motor_load > 100
+                )
+            )
+
+            if wall_detected or triangle_detected:
+                if left_motor_load > 160:
+                    w = robot.ctx.get_waiter(0.5)
+                    cancel = False
+                    while True:
+                        if w:
+                            break
+                        robot.drive(-60 * dir, 0)
+                        if abs(robot.L_motor.load()) < 160 * 0.9:
+                            cancel = True
+                            break
+                    if cancel:
+                        continue
+                    await robot.ctx.speaker.beep()
+                    self.straight_data(-dir)
+                    while True:
+                        base.drive(-200 * dir, 0)
+
+                        if abs(base.distance() - start_dist) < 10:
+                            break
+
+                print("detected load!")
+                if triangle_detected and abs(base.distance() - start_dist) < 300:
+                    triangle = True
+                    self.straight_data(-dir)
+                    self.touched_triangle = True
+                    print("Triangle!")
+                    await robot.straight(50)
+                    await robot.turn(start_heading - robot.ctx.imu.heading())
+                    await robot.ctx.speaker.beep()
+                    await robot.ctx.wait(0.2)
+                    await robot.ctx.speaker.beep()
+
+                break
+
+        base.brake()
+        await base.straight(-dir * 30)
+        base.use_gyro(True)
+        self.is_on_triangle = triangle
+
+
+    def copy(self):
+        n = r3_model_robot(None)
+        n.x, n.y, n._dir =    self.x, self.y, self._dir
+        n.exited          =    self.exited
+        n.last_dir        =    self.last_dir
+        n.noclip          =    self.noclip
+        n.time            =    self.time()
+        n.garra_touched_wall = self.garra_touched_wall
+        n.touched_triangle = self.touched_triangle
+        n.log             =    self.log
+        return n
+
+
+    def _turn(self, s):
+        self._dir = (self._dir + s) % 4
+        self.garra_touched_wall = False
+        self.touched_triangle = False
+        self.move_queue.append(self.real_turn(s))
+    
+
+    def straight_data(self, dir):
+        """Move one cell. Returns False if blocked (wall/obstacle)."""
+        self._pay("move")
+        dx, dy = STEP_TUPLE_FROM_DIR[self._dir]
+        self.last_dir = (dx, dy)
+        nx, ny = self.x + (dx * dir), self.y + (dy * dir)
+        self.x, self.y = nx, ny
+        
+
+    def forward(self):
+        """Move one cell. Returns False if blocked (wall/obstacle)."""
+        self.straight_data(1)
+        self.move_queue.append(self.real_move(1))
+        
+        return True
+
+    def backyard(self):
+        """Move one cell back. Returns False if blocked (wall/obstacle)."""
+        self.straight_data(-1)
+        self.move_queue.append(self.real_move(-1))
+        
+        return True
+
+    def measure(self, room=None):
+        dist = self.real_last_measurement
+        return min(floor((dist + 30) / 300), 4)
+
+    def on_triangle(self, room=None, dx=0, dy=0):
+        return self.is_on_triangle
+
+    def _pay(self, what):
+        self.log.append(what)
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\V3\r3_robot.py
+========================================
+
+"""Compatibility import for the physical R3 robot implementation."""
+
+from Spike.V3.r3_real_robot import r3_real_robot
+
+
+class r3_robot(r3_real_robot):
+    """Backward-compatible name for :class:`r3_real_robot`."""
+
+    pass
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\V3\r3_robot_interface.py
+========================================
+
+from V3.r3_model import r3_model
+
+
+class r3_robot_interface:
+    """Shared pose and environment interface for simulated and real robots."""
+
+    def __init__(self, room=None):
+        self._room = room
+        self.x, self.y, self._dir = 0, 0, 0
+        self.exited = None             # None | 'exit' | 'entrance'
+        self.noclip = False            # if True, simulation ignores obstacles
+        self.garra_touched_wall = False
+        self.touched_triangle = False
+        self.last_dir = (0, 0)
+        self.log = []
+
+    # What a robot can know: pose in the entrance frame (starts 0,0,up).
+    def pose(self):
+        return self.x, self.y, self._dir
+
+    # Used by render()/debugging only.
+    def _x(self):
+        return self.x + self._room.offset
+
+    def _y(self):
+        return self.y
+
+    def dir(self):
+        return self._dir
+
+    def turn_right(self):
+        self._turn(+1)
+
+    def turn_left(self):
+        self._turn(-1)
+
+    def kind(self, room=None):
+        if room is None:
+            room = self._room
+        return room.kind(self.x + room.offset, self.y)
+
+
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\V3\r3_score_functions.py
+========================================
+
+from V3.obrExperimentalData import *
+from V3.NekoMath import *
+from V3.r3_info import r3_info
+from V3.r3_model_robot import r3_model_robot
+
+def info_robot_score_function(candidate_data, info, robot):
+    return 0
+
+def room_robot_score_functions(robot: r3_model_robot, candidate_data: dict):
+    delivered_victims = candidate_data["delivered_victims"]
+    onboard_victims = candidate_data["onboard_victims"]
+
+    time_from_round_beggining = avg_time_before_r3 + robot.time
+    time_to_round_end = round_duration - time_from_round_beggining
+
+    """
+    In order to know what score we'll be gaining by delivering the victims, we 
+    need to know the total score to multiply. Thats why we calculate the expected score
+    after r3! Furthermore, if by delivering the victims the robot exits too late, so
+    that we get few points after r3, them it gets less rewarded!
+    """
+
+    potencial_score_after_r3 = avg_score_after_r3 * saturate(time_to_round_end, avg_time_after_r3 * 0.2)
+    # potencial_score_after_r3 += 60 * nk.sigmoid(time_to_round_end - avg_time_after_r3, 3)
+    expected_score = avg_score_before_r3 + potencial_score_after_r3
+    expected_score_multiplier = pow(score_multiplier_per_victim, delivered_victims)
+
+    score_before_onboard = expected_score * expected_score_multiplier
+    non_exit_score = score_before_onboard * pow(
+        score_multiplier_per_victim - 0.05,
+        onboard_victims,
+    )
+    exit_score = score_before_onboard + 10 * sigmoid(delivered_victims - 3)
+    return non_exit_score, exit_score
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\spike\V3\r3_triangle_data.py
+========================================
+
+"""Triangle configuration kept separately from room geometry."""
+
+_triangle_entries = []
+
+
+def set_triangles(room, triangles):
+    """Associate triangles with a room without external runtime dependencies."""
+    for index, entry in enumerate(_triangle_entries):
+        if entry[0] is room:
+            _triangle_entries[index] = (room, tuple(triangles))
+            return
+    _triangle_entries.append((room, tuple(triangles)))
+
+
+def triangles_for(room):
+    for candidate, triangles in _triangle_entries:
+        if candidate is room:
+            return triangles
+    return ()
+
+
+def is_triangle(room, x, y):
+    for corner in triangles_for(room):
+        if room.corner_cell(corner) == (x, y):
+            return True
+    return False
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\esp32\SPIKE_Bridge_v2.ino
+========================================
+
+#include <Wire.h>
+#include <VL53L1X.h>
+
+VL53L1X sensor;
+HardwareSerial UART2(2);
+
+
+
+
+
+
+
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(2, OUTPUT);
+  digitalWrite(2, LOW);
+  delay(1000);
+
+  Serial.println("Mewo! Alive!");
+
+  UART2.begin(115200, SERIAL_8N1, 16, 17);
+
+
+    // I2C
+  Wire.begin();
+    // Initialize sensor
+  sensor.setTimeout(500);
+
+  if (!sensor.init()) {
+    Serial.print("VL53L1X INIT FAILED");
+    delay(1000);
+  }
+
+    // Distance mode
+  sensor.setDistanceMode(VL53L1X::Long);
+
+  // Timing budget
+  sensor.setMeasurementTimingBudget(50000); // 50 ms
+
+  // Start continuous measurements
+  sensor.startContinuous(50);
+
+}
+
+void loop() {
+  uint16_t distance = sensor.read();
+  if (millis() % 1000 < 500){
+    digitalWrite(2, HIGH);
+  } else {
+    digitalWrite(2, LOW);
+  }
+  if (sensor.timeoutOccurred()) {
+    UART2.println("TIMEOUT");
+    Serial.println("TIMEOUT");
+  } else {
+    UART2.println(distance);
+    Serial.println(distance);
+  }
+
+  delay(100);
+
+}
+
+
+========================================
+ARQUIVO: C:\Users\Admin\Documents\GitHub\OBR2026\esp32\SPIKE_Bridge_v2\SPIKE_Bridge_v2.ino
+========================================
+
+#include <Wire.h>
+#include <VL53L1X.h>
+
+VL53L1X sensor;
+HardwareSerial UART1(1);
+
+int rear_button_pin_L = 5;
+int rear_button_pin_R = 18;
+
+// ====================================================================================
+// Uart protocol stuff
+// ====================================================================================
+byte ALT_FLAG  = 0xA0;
+byte STOP_FLAG = 0xA5;
+byte ALT_ALT_FLAG    = 0xA1;
+byte ALT_STOP_FLAG   = 0xA6;
+
+int pointer = 0;
+int packetBufferIndex = 0;
+
+byte packetBuffer[8][256];
+
+bool is_alt = false;
+bool is_packet_new = false;
+void send_packet(byte packet[], int len) {
+    for (int i = 0; i < len; i++) {
+        byte b = packet[i];
+
+        if (b == ALT_FLAG) {
+            UART1.write(ALT_FLAG);
+            UART1.write(ALT_ALT_FLAG);
+        }
+        else if (b == STOP_FLAG) {
+            UART1.write(ALT_FLAG);
+            UART1.write(ALT_STOP_FLAG);
+        }
+        else {
+            UART1.write(b);
+        }
+    }
+    UART1.write(STOP_FLAG);
+
+}
+
+void _add_byte_to_buffer(byte b) {
+    if (pointer >= 256)
+        return;
+
+    packetBuffer[packetBufferIndex][pointer] = b;
+    pointer++;
+}
+
+byte unalt(byte b) {
+    if (b == ALT_ALT_FLAG)
+        return ALT_FLAG;
+
+    if (b == ALT_STOP_FLAG)
+        return STOP_FLAG;
+
+    return b;
+}
+
+
+void tick_listener() {
+    while (UART1.available()) {
+        byte b = UART1.read();
+
+        if (b == STOP_FLAG) {
+            pointer = 0;
+            packetBufferIndex = (packetBufferIndex + 1) % 8;
+            is_packet_new = true;
+        }
+        else if (is_alt) {
+            _add_byte_to_buffer(unalt(b));
+            is_alt = false;
+        }
+        else if (b == ALT_FLAG) {
+            is_alt = true;
+        }
+        else {
+            _add_byte_to_buffer(b);
+        }
+    }
+}
+
+// ====================================================================================
+// Sensor working stuff
+// ====================================================================================
+
+void startup_distance_sensor(){
+  
+  while (true) {
+    rgb_log(1, 1, 0);
+    Wire.begin();
+    sensor.setTimeout(500);
+    delay(100);
+
+
+    if (!sensor.init()) {
+      Serial.println("VL53L1X INIT FAILED, RETRYING");
+      for (int i = 0; i < 6; i++){
+        rgb_log(1, 0, 0);
+        delay(50);
+        rgb_log(0, 0, 0);
+        delay(50);
+      }
+    } else {
+      break;
+    }
+  }
+
+  // Sensor configuration
+  rgb_log(1, 1, 0);
+  sensor.setDistanceMode(VL53L1X::Long);
+  sensor.setMeasurementTimingBudget(50000); // 50 ms
+  Serial.println("VL53L1X succesfully initialized!");
+  sensor.startContinuous(50);
+
+  rgb_log(0, 1, 0);
+}
+
+void restart_distance_sensor(){
+  sensor.stopContinuous();
+  Wire.end();
+  startup_distance_sensor();
+}
+
+
+
+int ledR = 15;
+int ledG = 2;
+int ledB = 4;
+
+void setup() {
+
+
+  // Startup logging
+  Serial.begin(115200);
+  pinMode(ledR, OUTPUT);
+  pinMode(ledG, OUTPUT);
+  pinMode(ledB, OUTPUT);
+  pinMode(rear_button_pin_L, INPUT);
+  pinMode(rear_button_pin_R, INPUT);
+  digitalWrite(ledR, LOW);
+  digitalWrite(ledG, LOW);
+  digitalWrite(ledB, LOW);
+  Serial.println("ESP32 Hub alive!");
+  Serial.println("===============[ Info ]===============");
+  Serial.println(ESP.getChipModel());
+  Serial.println(ESP.getChipRevision());
+  Serial.println(ESP.getChipCores());
+  Serial.println("======================================");
+
+  // Hub bridge startup
+  UART1.begin(115200, SERIAL_8N1, 16, 17);
+  startup_distance_sensor();
+
+}
+
+void rgb_log(float r, float g, float b){
+  analogWrite(ledR, 254 * r);
+  analogWrite(ledG, 254 * g);
+  analogWrite(ledB, 254 * b);
+}
+
+
+void rgb_sine_log(float r, float g, float b, float f){
+  float s = (sin(f * millis() * 0.001 * 3.1415) + 1) * 0.5;
+  rgb_log(r * s, g * s, b * s);
+}
+
+void rgb_sine_log_delay(float r, float g, float b, float f, int dd){
+  for (int i = 0; i < dd; i+= 2){
+    rgb_sine_log(r, g, b, f);
+    delay(2);
+  }
+}
+
+
+
+
+void loop() {
+    static uint16_t last_valid_distance = 0;
+
+    uint16_t distance = sensor.read();
+
+    byte packet[4];
+    float r = 0;
+    float b = 0;
+    byte rear_button_L = 0x00;
+    byte rear_button_R = 0x00;
+\
+    if (digitalRead(rear_button_pin_L) == LOW){
+      Serial.print("L-on  "); 
+      rear_button_L = 0x01; 
+      r = 0.3;
+    } else {
+      Serial.print("L-off ");
+    }
+    if (digitalRead(rear_button_pin_R) == LOW){
+      Serial.println("R-on"); 
+      rear_button_R = 0x01; 
+      b = 0.3;
+    } else {
+      Serial.println("R-off");
+    }
+
+    if (sensor.timeoutOccurred()) {
+        // Keep the previous valid distance
+        packet[0] = lowByte(last_valid_distance);
+        packet[1] = highByte(last_valid_distance);
+        packet[2] = 0x01; // TIMEOUT
+        packet[3] = rear_button_L;
+        packet[4] = rear_button_R;
+
+        Serial.println("TIMEOUT");
+
+        send_packet(packet, 5);
+        restart_distance_sensor();
+    }
+    else {
+        last_valid_distance = distance;
+
+        packet[0] = lowByte(distance);
+        packet[1] = highByte(distance);
+        packet[2] = 0x00; // VALID
+        packet[3] = rear_button_L;
+        packet[4] = rear_button_R;
+
+        //Serial.println(distance);
+
+        send_packet(packet, 5);
+    }
+    //rgb.log(float(int(packetBuffer[(packetBufferIndex + 7) % 8][0])) / 254, float(int(packetBuffer[(packetBufferIndex + 7) % 8][1])) / 254, float(int(packetBuffer[(packetBufferIndex + 7) % 8][2])) / 254)
+    
+    rgb_sine_log_delay(r, 0.5, b, 1, 100);
+    tick_listener();
+    if (is_packet_new){
+      is_packet_new = false;
+      send_packet(packetBuffer[(packetBufferIndex + 7) % 8], 10);
+      rgb_log(0, 0, 1);
+      delay(1000);
+    }
+}

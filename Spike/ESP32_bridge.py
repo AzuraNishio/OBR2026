@@ -111,6 +111,9 @@ class Esp32SensorPack:
     async def rear_sensor_pressed(self):
         return await self.sensor.L_button_pressed()
 
+    async def garra_sensor_pressed(self):
+        return await self.sensor.R_button_pressed()
+
     def distance_sinc(self):
         return self.sensor.sinc_distance()
 
