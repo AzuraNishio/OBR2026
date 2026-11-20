@@ -6,9 +6,8 @@ All agent documentation is centralized in this folder; the root
 anything. Deeper docs:
 
 - [spike-hub-runtime.md](spike-hub-runtime.md) — hub runtime: boot flow, line follower, robot/model/context
-- [room3-solver.md](room3-solver.md) — Room 3 (rescue) solver: model, beam search, opening book
-- [real-robot-contract.md](real-robot-contract.md) — expected real-robot movement/sensing contract for Room 3
-- [esp32-firmware.md](esp32-firmware.md) — ESP32 sensor-pack firmware and UART protocol
+\\\\- [esp32-firmware.md](esp32-firmware.md) — ESP32 sensor-pack firmware and UART protocol
+- [legacy/](legacy/) — previous Room 3 solver and hardware contract, retained for reference
 
 ## What this is
 
@@ -50,7 +49,7 @@ Spike/                 Everything that runs on the hub (entry: __init__.py)
   Model.py             Odometry model (IMU + wheel encoders)
   FollowerAlgorithm.py Main line-follow loop: PD control, green/gap/obstacle/silver
   Room3.py             room3check(): ramp detection, hands off to V3
-  V3/                  Room 3 solver (see room3-solver.md)
+  V3/                  Previous Room 3 solver (legacy reference)
   libs/                Utills (port probe, vector math), AzSensors, Exceptions,
                        AwareRobotics/AwDriveBase (DriveBase + stuck detection)
   ESP32_bridge.py      UART protocol client for the ESP32 pack
@@ -80,8 +79,8 @@ agents/                Agent documentation (this folder)
 
 - Tuning values go in [../Spike/constants.py](../Spike/constants.py), not inline.
 - "Room 3" = rescue room; `r3_` prefix = room 3; `garra` = claw.
-- Room geometry uses cell coordinates with the entrance at `y = -1`;
-  directions are 0=up, 1=right, 2=down, 3=left (see room3-solver.md).
+- The current Room 3 rework is intentionally simpler than the previous
+  cell-based solver; old geometry notes are kept under [legacy/](legacy/).
 - Known latent bug (do not silently change behavior): `LineFollowerRobot.py`
   calls `ctx.show_string_enxcoded_img(...)` (typo) while `Scaffolding.py`
   defines `show_string_encoded_img`; it only triggers in the missing-port

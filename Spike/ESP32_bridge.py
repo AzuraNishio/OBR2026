@@ -110,8 +110,11 @@ class Esp32SensorPack:
 
 
     async def laser_distance_safe(self):
-        return await self.sensor.distance() 
-    
+        while True:
+            d = await self.sensor.distance()
+            if not d is None: return d 
+
+
     async def front_sensor_pressed(self):
         return await self.sensor.front_button_pressed()
 

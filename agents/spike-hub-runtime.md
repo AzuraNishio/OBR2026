@@ -107,7 +107,10 @@ Note: `laser_distance()`/`rear_sensor_pressed()` are awaited everywhere.
   defined — don't use `line()`/`isDeepLine()`/`isShallowLine()` as-is.
 - `Scaffolding.waiter.__bool__` inverts logic when `inverted=True`
   (`get_invereted_waiter`); read carefully before using.
-- `Room3.py` drives 6×~12 mm to detect the ramp via `imu.tilt()[0] > 5`,
-  then hands off to `V3.r3_main.run_room3`.
-- `Room3 legacy.py` is reference-only; `V3/` replaced it.
+- `Room3.py` checks the ramp, then runs the simpler `test2()` routine.
+  The laser is mounted on the robot's left, the garra is at the back, and
+  its tip button is used during reverse movement. `test2()` also handles
+  triangle delivery and black-line recovery.
+- Previous solver and hardware-contract documentation is in [legacy/](legacy/).
+- `Room3 legacy.py` and `V3/` are retained as code references only.
 - `simulator/` contains only stale `__pycache__`; no simulator source exists.
